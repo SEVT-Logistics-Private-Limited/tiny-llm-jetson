@@ -69,3 +69,7 @@ parameters purely for their own sake on throwaway text.
 ## Files
 - tiny_llm.py, tiny_llm.pt, test_tiny_llm.py, model-card.md -- rung 1
 - tiny_llm_1m.py, tiny_llm_1m.pt, test_tiny_llm_1m.py, model-card-1m.md -- rung 2
+
+## Update
+Also completed a rung-3 run at 151,204,504 parameters (~150 million).
+See model-card-150m.md for details.
