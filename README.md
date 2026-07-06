@@ -1,75 +1,55 @@
-# Tiny LLM on Jetson Orin
+# Tiny LLM - Small-Model Foundations
 
-A series of GPT-style transformers, built and trained entirely from
-scratch on an NVIDIA Jetson Orin Nano Super edge device -- no pretrained
-weights, no fine-tuning, starting from random initialization every time.
+From-scratch GPT-style transformers scaled from 984 params to 399M
+across Jetson Orin edge hardware and Google Colab.
 
-This is the Small-Model Foundations progression: prove the complete
-from-scratch training pipeline (data, tokenizer, transformer, optimizer,
-checkpoint) works end-to-end on accessible edge hardware, then scale it
-up step by step, rung by rung, and measure exactly what changes.
+**Author:** Rishi Sasanala
+**Hardware:** NVIDIA Jetson Orin Nano Super + Google Colab Pro A100
+**Stack:** PyTorch, CUDA, Git LFS
 
-## Author
-Rishi
+---
 
-## Hardware
-NVIDIA Jetson Orin Nano Super, JetPack 6.2.1, CUDA 12.6, MAXN_SUPER
-power mode, PyTorch via the dustynv/l4t-pytorch:r36.4.0 container.
+## Progression
 
-## What's in this repo
+| Rung | Params | Platform | Final Loss | Notes |
+|------|--------|----------|------------|-------|
+| 1 | 984 | Jetson Orin | 0.175 | fp32, batch=32 |
+| 2 | ~1M | Jetson Orin | 0.016 | fp32, batch=32, best result |
+| 3 | ~151M | Jetson Orin | 1.954 | fp32, batch=8, memory-constrained |
+| 3b | ~151M | Colab T4 | 1.114 | bf16, batch=16 |
+| 4 | ~399M | Colab Pro A100 | TBD | bf16+GC+clipping, batch=16 |
 
-### Rung 1: tiny_llm.py / tiny_llm.pt
-A 984-parameter, 1-layer transformer. The smallest possible "real" GPT
-architecture: token + position embeddings, single attention block,
-weight-tied output head, no biases. Trained on a short repeated English
-sentence for 5,000 steps in under a minute.
+---
 
-Result: loss fell from 6.604 to 0.175. The model learns the corpus's
-structure -- correctly reproduces long stretches of the training text --
-but does not fully memorize it, with some garbled segments. This is
-expected and intentional at this scale: the goal is to prove the
-pipeline works, not to produce fluent or perfect text.
+## Rung 1 - 984 parameters (Jetson Orin)
+Smallest viable GPT. Proves the full pipeline end-to-end on edge hardware.
+Loss 6.6 to 0.175 in under 1 minute on-device.
+Files: tiny_llm.py, tiny_llm.pt, test_tiny_llm.py, model-card.md
 
-Full details: model-card.md
-Verification: test_tiny_llm.py independently reloads the checkpoint and
-generates from 4 unseen seed strings.
+## Rung 2 - ~1M parameters (Jetson Orin)
+1000x scale-up, same recipe. Flawless convergence to 0.016.
+Best result across all rungs. Proves stable scaling when recipe is constant.
+Files: tiny_llm_1m.py, tiny_llm_1m.pt, test_tiny_llm_1m.py, model-card-1m.md
 
-### Rung 2: tiny_llm_1m.py / tiny_llm_1m.pt
-A 990,200-parameter, 2-layer transformer -- roughly 1000x the parameter
-count of rung 1, on the same architecture family and the same training
-corpus. Built to test how training behavior changes purely from scale.
+## Rung 3 - ~151M parameters (Jetson + Colab)
+Jetson: batch forced to 8, loss plateaued at 1.954 (memory-constrained).
+Colab T4: batch=16, bf16, loss 0.686 best but still oscillating.
+Key finding: corpus saturated at this scale, not a hardware limit.
+Files: tiny_llm_150m.py, tiny_llm_150m.pt, test_tiny_llm_150m.py, model-card-150m.md
 
-Result: loss fell to 0.016 -- a flawless, fully memorized reproduction
-of the training corpus with zero garbling. At this capacity, the model
-has more than enough room to perfectly learn the short repeated sentence,
-so the corpus itself becomes the limiting factor rather than the model.
+## Rung 4 - ~399M parameters (Colab Pro A100)
+2.6x scale from rung 3. New techniques: bf16 AMP, gradient checkpointing,
+gradient clipping. First rung with dedicated high-VRAM GPU.
+Files: tiny_llm_400m.py, tiny_llm_400m.pt, test_tiny_llm_400m.py, model-card-400m.md
 
-Full details: model-card-1m.md
-Verification: test_tiny_llm_1m.py, same independent reload-and-generate
-test as rung 1.
+---
 
-## Why two rungs, same corpus
-The point of holding the training text constant across rungs is to
-isolate exactly one variable: parameter count. Rung 1 proves the
-pipeline runs at all. Rung 2 proves it scales correctly by 1000x without
-any change beyond the architecture config (embedding dimension, context
-length, number of layers). Both checkpoints were independently verified
-by reloading them in a separate script and generating text from seed
-strings the training run never explicitly returned to -- not just
-trusting the training log.
+## Key Engineering Findings
+- Parameter count alone does not determine convergence quality
+- Training recipe (batch size, lr, precision) is the real constraint
+- Jetson ceiling for clean training: ~1M params with fp32 batch=32
+- Corpus exhausted above ~1M params; next rung needs real data
 
-## Where this goes next
-The English placeholder corpus is now fully saturated at rung-2 scale --
-further scaling parameter count on the same short sentence won't teach
-us anything new. The planned next step is to introduce a real, larger
-training corpus, with the longer-term goal of producing a genuinely
-useful small Indic-language model, rather than continuing to scale
-parameters purely for their own sake on throwaway text.
-
-## Files
-- tiny_llm.py, tiny_llm.pt, test_tiny_llm.py, model-card.md -- rung 1
-- tiny_llm_1m.py, tiny_llm_1m.pt, test_tiny_llm_1m.py, model-card-1m.md -- rung 2
-
-## Update
-Also completed a rung-3 run at 151,204,504 parameters (~150 million).
-See model-card-150m.md for details.
+## Next Steps
+Rung 5: real Indic-language corpus on A100, targeting a genuinely
+useful small regional-language model.
