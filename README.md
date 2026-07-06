@@ -53,3 +53,8 @@ Files: tiny_llm_400m.py, tiny_llm_400m.pt, test_tiny_llm_400m.py, model-card-400
 ## Next Steps
 Rung 5: real Indic-language corpus on A100, targeting a genuinely
 useful small regional-language model.
+
+## Rung 5 - ~1B parameters (Colab Pro A100-80GB)
+36-layer, 1520-dim transformer. First billion-parameter run.
+bf16 + gradient checkpointing + grad clipping.
+Files: tiny_llm_1b.py, tiny_llm_1b.pt, model-card-1b.md
