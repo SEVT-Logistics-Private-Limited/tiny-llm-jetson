@@ -81,3 +81,9 @@ useful small regional-language model output.
 Loss 2222 → 0.1098. Near-perfect sample output.
 Checkpoint (6GB) on HuggingFace: https://huggingface.co/RishikUttejSasanala/tiny-llm-3b
 Files: tiny_llm_3b.py, model-card-3b.md
+
+## Rung 8 — ~3B parameters MAX (Colab Pro A100-80GB)
+Maximum parameter count achievable on A100-80GB with this architecture.
+n_embd=4000, n_layer=16. Loss 2243 → 0.0977 best. Near-perfect sample.
+Checkpoint (6.15GB) on HuggingFace: https://huggingface.co/RishikUttejSasanala/tiny-llm-5b
+Files: tiny_llm_5b.py, model-card-5b.md
