@@ -75,3 +75,9 @@ Files: tiny_llm_2b.py, tiny_llm_2b.pt, model-card-2b.md
 Rung 7: ~3B parameters on A100-80GB (same pipeline).
 Rung 8: real Indic-language corpus — first run targeting genuinely
 useful small regional-language model output.
+
+## Rung 7 — ~3B parameters (Colab Pro A100-80GB)
+16-layer, 3952-dim transformer. Best convergence of all rungs.
+Loss 2222 → 0.1098. Near-perfect sample output.
+Checkpoint (6GB) on HuggingFace: https://huggingface.co/RishikUttejSasanala/tiny-llm-3b
+Files: tiny_llm_3b.py, model-card-3b.md
