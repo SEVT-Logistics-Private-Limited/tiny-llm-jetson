@@ -122,3 +122,38 @@ Files: tiny_llm_telugu.py, tiny_llm_telugu.pt, model-card-telugu.md
 2. Connect STT (Sarvam AI) + LLM + TTS (Bulbul) via FastAPI
 3. Add WebSocket streaming for real-time conversation
 4. Deploy as voice agent API
+
+---
+
+## Telugu Voice AI API (Phase 2 — Azure Deployment)
+
+### What it does
+A production-ready Telugu Voice AI Assistant API that:
+- Accepts Telugu speech input
+- Transcribes it using Sarvam Saarika v2.5 (STT)
+- Generates intelligent Telugu response using Sarvam-105b (LLM)
+- Converts response to natural Telugu audio using Sarvam Bulbul v2 (TTS)
+
+### Live API
+- Base URL: http://52.140.52.237:8000
+- Docs: http://52.140.52.237:8000/docs
+- Status: Live 24/7 on Azure VM (South India)
+
+### Endpoints
+| Endpoint | Function |
+|---|---|
+| GET / | Health check |
+| POST /tts | Telugu text to audio |
+| POST /stt | Telugu audio to text |
+| POST /speak | Text to LLM to Telugu audio |
+| POST /voice | Audio to STT to LLM to TTS to audio |
+
+### Tech Stack
+- FastAPI + Uvicorn
+- Sarvam AI (STT + LLM + TTS)
+- Azure VM Ubuntu 24.04
+- systemd (auto-restart service)
+
+### Deployment
+Deployed as a permanent systemd service on Azure VM.
+Auto-starts on reboot, auto-restarts on crash.
