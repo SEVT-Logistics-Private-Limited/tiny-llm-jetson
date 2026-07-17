@@ -157,3 +157,27 @@ A production-ready Telugu Voice AI Assistant API that:
 ### Deployment
 Deployed as a permanent systemd service on Azure VM.
 Auto-starts on reboot, auto-restarts on crash.
+
+---
+
+## Update — 17 July 2026
+
+### Voice Assistant UI
+- Built a premium conversational voice assistant UI (`telugu_assistant.html`)
+- Dark zinc theme with indigo/violet gradient accents
+- Continuous conversation loop — click once, keep talking
+- Typing indicator, wave animation, live status chip
+- Hosted at: https://52.140.52.237.nip.io/assistant
+
+### API v3.1 Updates
+- Added `/converse` endpoint with conversation history support
+- Response cleaning — no more asterisks or English mixing in Telugu responses
+- ffmpeg audio conversion (webm → wav) for browser compatibility
+- Reduced LLM max_tokens from 4096 → 500 for 1.2s response time
+- CORS middleware + HTTPS via Nginx + Let's Encrypt SSL
+- Permanent deployment with systemd auto-restart
+
+### Infrastructure
+- Nginx reverse proxy with SSL (expires Oct 2026, auto-renews)
+- Domain: 52.140.52.237.nip.io (free nip.io domain)
+- Azure VM: Standard D2s v3, Ubuntu 24.04, South India

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="te">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>యోధ — Telugu Voice AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:#09090b;font-family:'Inter',sans-serif;color:#e4e4e7;-webkit-font-smoothing:antialiased}
+body{display:flex;align-items:center;justify-content:center;padding:16px}
+
+.app{width:100%;max-width:420px;height:calc(100vh - 32px);max-height:780px;background:#09090b;border:0.5px solid #27272a;border-radius:24px;display:flex;flex-direction:column;overflow:hidden;position:relative}
+
+/* Header */
+.hdr{padding:18px 20px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid #18181b;flex-shrink:0}
+.brand{display:flex;align-items:center;gap:10px}
+.bmark{width:34px;height:34px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.bmark svg{width:17px;height:17px;fill:#fff}
+.bname{font-size:14px;font-weight:600;color:#fafafa;letter-spacing:-0.3px}
+.bsub{font-size:10px;color:#52525b;margin-top:1px}
+.live-chip{display:flex;align-items:center;gap:5px;background:#18181b;border:0.5px solid #27272a;border-radius:20px;padding:5px 10px}
+.ldot{width:6px;height:6px;border-radius:50%;background:#22c55e;flex-shrink:0}
+.live-chip span{font-size:11px;color:#71717a}
+
+/* Chat */
+.chat{flex:1;overflow-y:auto;padding:20px 16px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+.chat::-webkit-scrollbar{width:0}
+
+.day-sep{text-align:center;font-size:10px;color:#3f3f46;letter-spacing:0.6px;text-transform:uppercase;margin:4px 0 8px;flex-shrink:0}
+
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:40px 20px;text-align:center}
+.empty-icon{width:52px;height:52px;background:#18181b;border:0.5px solid #27272a;border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:4px}
+.empty-icon svg{width:24px;height:24px;fill:#6366f1}
+.empty h2{font-size:15px;font-weight:600;color:#fafafa}
+.empty p{font-size:13px;color:#52525b;line-height:1.6;max-width:240px}
+
+.row{display:flex;align-items:flex-end;gap:8px;animation:fadeUp .25s ease}
+.row.u{flex-direction:row-reverse}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+.av{width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:#fff}
+.av.ai{background:linear-gradient(135deg,#6366f1,#8b5cf6)}
+.av.ai svg{width:12px;height:12px;fill:#fff}
+.av.user{background:#27272a;color:#a1a1aa}
+
+.bbl{max-width:78%;padding:9px 13px;border-radius:16px;font-size:13px;line-height:1.65;word-break:break-word}
+.bbl.ai{background:#18181b;border:0.5px solid #27272a;border-bottom-left-radius:4px;color:#d4d4d8}
+.bbl.user{background:#6366f1;border-bottom-right-radius:4px;color:#fff}
+.bbl .lbl{font-size:9px;color:#52525b;font-weight:500;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px}
+
+.typing-row{display:flex;align-items:flex-end;gap:8px;animation:fadeUp .25s ease}
+.typing-dots{display:flex;align-items:center;gap:4px;padding:12px 14px;background:#18181b;border:0.5px solid #27272a;border-radius:16px;border-bottom-left-radius:4px}
+.td{width:5px;height:5px;border-radius:50%;background:#3f3f46;animation:tdAnim 1.2s ease-in-out infinite}
+.td:nth-child(2){animation-delay:.2s}.td:nth-child(3){animation-delay:.4s}
+@keyframes tdAnim{0%,60%,100%{transform:translateY(0);background:#3f3f46}30%{transform:translateY(-5px);background:#6366f1}}
+
+/* Bottom */
+.bot{padding:14px 20px 24px;border-top:0.5px solid #18181b;display:flex;flex-direction:column;align-items:center;gap:12px;flex-shrink:0}
+
+.sbar{height:20px;display:flex;align-items:center;gap:7px;font-size:12px;color:#52525b;transition:all .3s}
+.sbar.listening{color:#f87171}
+.sbar.speaking{color:#34d399}
+.sbar.thinking{color:#a78bfa}
+.sdot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+.sbar.listening .sdot{animation:sblink 1s ease-in-out infinite}
+.sbar.thinking .sdot{animation:sblink .6s ease-in-out infinite}
+@keyframes sblink{0%,100%{opacity:1}50%{opacity:.3}}
+
+.wave-row{display:flex;align-items:center;gap:2.5px;height:16px}
+.wb{width:2px;border-radius:2px;background:currentColor;animation:wbAnim 1s ease-in-out infinite}
+.wb:nth-child(1){height:4px;animation-delay:0s}.wb:nth-child(2){height:10px;animation-delay:.1s}.wb:nth-child(3){height:16px;animation-delay:.2s}.wb:nth-child(4){height:8px;animation-delay:.3s}.wb:nth-child(5){height:4px;animation-delay:.4s}
+@keyframes wbAnim{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+
+.ctls{display:flex;align-items:center;gap:18px}
+
+.ibtn{width:42px;height:42px;border-radius:50%;border:0.5px solid #27272a;background:#18181b;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;flex-shrink:0}
+.ibtn:hover{background:#27272a;border-color:#3f3f46}
+.ibtn svg{width:16px;height:16px;stroke:#71717a;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:stroke .15s}
+.ibtn:hover svg{stroke:#a1a1aa}
+.ibtn.muted svg{stroke:#ef4444}
+
+.mic-wrap{position:relative;display:flex;align-items:center;justify-content:center}
+.mic-ring{position:absolute;width:80px;height:80px;border-radius:50%;border:1px solid #6366f130;animation:ringPulse 2s ease-out infinite;pointer-events:none;opacity:0}
+.mic-ring.active{opacity:1}
+@keyframes ringPulse{0%{transform:scale(.8);opacity:.6}100%{transform:scale(1.4);opacity:0}}
+
+.mic{width:64px;height:64px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s cubic-bezier(.34,1.56,.64,1);position:relative;z-index:1;flex-shrink:0}
+.mic.idle{background:linear-gradient(135deg,#6366f1,#8b5cf6);box-shadow:0 8px 24px #6366f140}
+.mic.idle:hover{transform:scale(1.06);box-shadow:0 12px 32px #6366f160}
+.mic.rec{background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 8px 24px #ef444440}
+.mic.speaking{background:linear-gradient(135deg,#10b981,#059669);box-shadow:0 8px 24px #10b98140}
+.mic.thinking{background:linear-gradient(135deg,#8b5cf6,#7c3aed);box-shadow:0 8px 24px #8b5cf640}
+.mic svg{width:24px;height:24px;fill:#fff;transition:all .2s}
+.mic .sq{width:14px;height:14px;background:#fff;border-radius:3px;display:none}
+
+.hint{font-size:10px;color:#3f3f46;text-align:center}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="hdr">
+    <div class="brand">
+      <div class="bmark">
+        <svg viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 1 4 4v4a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zm-7 10a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h-2v-2.07A7 7 0 0 1 5 12z"/></svg>
+      </div>
+      <div>
+        <div class="bname">యోధ — Telugu AI</div>
+        <div class="bsub">Powered by Sarvam AI · Yodha AI</div>
+      </div>
+    </div>
+    <div class="live-chip">
+      <div class="ldot"></div>
+      <span id="chipTxt">Ready</span>
+    </div>
+  </div>
+
+  <div class="chat" id="chat">
+    <div class="empty" id="empty">
+      <div class="empty-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 1 4 4v4a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zm-7 10a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h-2v-2.07A7 7 0 0 1 5 12z"/></svg>
+      </div>
+      <h2>నమస్కారం! నేను యోధ.</h2>
+      <p>మైక్ నొక్కి తెలుగులో మాట్లాడండి. నేను వింటాను మరియు జవాబు ఇస్తాను.</p>
+    </div>
+  </div>
+
+  <div class="bot">
+    <div class="sbar" id="sbar">
+      <div class="sdot"></div>
+      <span id="stxt">మాట్లాడటానికి సిద్ధంగా ఉంది</span>
+    </div>
+
+    <div class="ctls">
+      <div class="ibtn" id="clearBtn" onclick="clearChat()">
+        <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </div>
+
+      <div class="mic-wrap">
+        <div class="mic-ring" id="ring"></div>
+        <button class="mic idle" id="mic" onclick="toggle()">
+          <svg id="micSvg" viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 1 4 4v4a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zm-7 10a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h-2v-2.07A7 7 0 0 1 5 12z"/></svg>
+          <div class="sq" id="sq"></div>
+        </button>
+      </div>
+
+      <div class="ibtn" id="volBtn" onclick="toggleMute()">
+        <svg id="volSvg" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+      </div>
+    </div>
+
+    <div class="hint">నొక్కండి మాట్లాడడానికి · మళ్ళీ నొక్కండి ఆపడానికి</div>
+  </div>
+</div>
+
+<script>
+const API = "https://52.140.52.237.nip.io";
+let active = false, rec = null, chunks = [], history = [], muted = false, curAudio = null, timer = null;
+
+function setStatus(txt, mode) {
+  const b = document.getElementById('sbar');
+  const t = document.getElementById('stxt');
+  b.className = 'sbar' + (mode ? ' ' + mode : '');
+  t.textContent = txt;
+  document.getElementById('chipTxt').textContent =
+    mode === 'listening' ? 'Listening' : mode === 'speaking' ? 'Speaking' : mode === 'thinking' ? 'Thinking' : 'Ready';
+}
+
+function setMic(state) {
+  const m = document.getElementById('mic');
+  const sv = document.getElementById('micSvg');
+  const sq = document.getElementById('sq');
+  const rg = document.getElementById('ring');
+  m.className = 'mic ' + state;
+  sv.style.display = state === 'rec' ? 'none' : 'block';
+  sq.style.display = state === 'rec' ? 'block' : 'none';
+  rg.className = 'mic-ring' + (state === 'rec' ? ' active' : '');
+}
+
+function addMsg(type, label, text) {
+  const chat = document.getElementById('chat');
+  document.getElementById('empty') && document.getElementById('empty').remove();
+  const row = document.createElement('div');
+  row.className = 'row' + (type === 'user' ? ' u' : '');
+  const isAI = type === 'ai';
+  row.innerHTML = `
+    <div class="av ${isAI ? 'ai' : 'user'}">
+      ${isAI ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>' : 'మీ'}
+    </div>
+    <div class="bbl ${type}">
+      <div class="lbl">${label}</div>
+      ${text}
+    </div>`;
+  chat.appendChild(row);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function showTyping() {
+  const chat = document.getElementById('chat');
+  const d = document.createElement('div');
+  d.className = 'typing-row'; d.id = 'typing';
+  d.innerHTML = `<div class="av ai"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg></div><div class="typing-dots"><div class="td"></div><div class="td"></div><div class="td"></div></div>`;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function hideTyping() { document.getElementById('typing')?.remove(); }
+
+function clearChat() {
+  history = [];
+  const chat = document.getElementById('chat');
+  chat.innerHTML = `<div class="empty" id="empty"><div class="empty-icon"><svg viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 1 4 4v4a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zm-7 10a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h-2v-2.07A7 7 0 0 1 5 12z"/></svg></div><h2>నమస్కారం! నేను యోధ.</h2><p>మైక్ నొక్కి తెలుగులో మాట్లాడండి. నేను వింటాను మరియు జవాబు ఇస్తాను.</p></div>`;
+  setStatus('మాట్లాడటానికి సిద్ధంగా ఉంది');
+  if (active) { active = false; rec?.stop(); setMic('idle'); }
+}
+
+function toggleMute() {
+  muted = !muted;
+  const btn = document.getElementById('volBtn');
+  btn.className = 'ibtn' + (muted ? ' muted' : '');
+  document.getElementById('volSvg').innerHTML = muted
+    ? '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>'
+    : '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>';
+  if (muted && curAudio) { curAudio.pause(); curAudio = null; }
+}
+
+function toggle() { active ? stop() : start(); }
+
+async function start() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    chunks = [];
+    rec = new MediaRecorder(stream);
+    rec.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
+    rec.onstop = () => { stream.getTracks().forEach(t => t.stop()); process(); };
+    rec.start(100);
+    active = true;
+    setMic('rec');
+    setStatus('వింటున్నాను... తెలుగులో మాట్లాడండి', 'listening');
+    timer = setTimeout(() => rec?.state === 'recording' && rec.stop(), 8000);
+  } catch {
+    setStatus('మైక్ అనుమతి అవసరం');
+  }
+}
+
+function stop() {
+  clearTimeout(timer);
+  active = false;
+  if (rec?.state === 'recording') rec.stop();
+}
+
+async function process() {
+  if (!chunks.length) { setMic('idle'); setStatus('మాట్లాడటానికి సిద్ధంగా ఉంది'); return; }
+  setMic('thinking');
+  setStatus('ఆలోచిస్తున్నాను...', 'thinking');
+  showTyping();
+
+  const blob = new Blob(chunks, { type: 'audio/webm' });
+  const b64 = await new Promise(res => {
+    const r = new FileReader();
+    r.onloadend = () => res(r.result.split(',')[1]);
+    r.readAsDataURL(blob);
+  });
+
+  try {
+    const resp = await fetch(`${API}/converse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio_base64: b64, history })
+    });
+    const data = await resp.json();
+    hideTyping();
+    if (data.transcript) addMsg('user', 'మీరు', data.transcript);
+    if (data.response) addMsg('ai', 'యోధ', data.response);
+    if (data.history) history = data.history;
+    if (data.audio_base64 && !muted) {
+      await playAudio(data.audio_base64);
+    } else {
+      setMic('idle');
+      setStatus('మాట్లాడటానికి సిద్ధంగా ఉంది');
+    }
+    if (active) setTimeout(() => start(), 400);
+  } catch {
+    hideTyping();
+    setStatus('లోపం వచ్చింది — మళ్ళీ ప్రయత్నించండి');
+    setMic('idle');
+    active = false;
+  }
+}
+
+function playAudio(b64) {
+  return new Promise(res => {
+    setMic('speaking');
+    setStatus('జవాబు చెప్తున్నాను...', 'speaking');
+    const bytes = atob(b64);
+    const buf = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    curAudio = new Audio(url);
+    curAudio.onended = () => { URL.revokeObjectURL(url); curAudio = null; setMic('idle'); setStatus('మాట్లాడటానికి సిద్ధంగా ఉంది'); res(); };
+    curAudio.onerror = () => { res(); };
+    curAudio.play().catch(() => res());
+  });
+}
+</script>
+</body>
+</html>
