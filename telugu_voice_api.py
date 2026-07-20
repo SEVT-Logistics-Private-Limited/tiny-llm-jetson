@@ -1,4 +1,4 @@
-import base64, sarvamai, requests, tempfile, subprocess, os, re, concurrent.futures
+import base64, sarvamai, requests, tempfile, subprocess, os, re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -22,24 +22,21 @@ def get_context():
         "hour": now.hour
     }
 
-# Cache instant responses for common questions
 INSTANT_RESPONSES = {
     "సమయం": lambda ctx: f"ఇప్పుడు సమయం {ctx['time']} IST.",
-    "time": lambda ctx: f"ఇప్పుడు సమయం {ctx['time']} IST.",
     "టైమ్": lambda ctx: f"ఇప్పుడు సమయం {ctx['time']} IST.",
+    "time": lambda ctx: f"ఇప్పుడు సమయం {ctx['time']} IST.",
     "తేదీ": lambda ctx: f"ఈరోజు {ctx['date']}, {ctx['day']}.",
-    "date": lambda ctx: f"ఈరోజు {ctx['date']}, {ctx['day']}.",
     "ఈరోజు": lambda ctx: f"ఈరోజు {ctx['date']}, {ctx['day']}.",
     "నమస్కారం": lambda ctx: "నమస్కారం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?",
-    "హలో": lambda ctx: "హలో! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?",
-    "హాయ్": lambda ctx: "హాయ్! నేను యోధను. చెప్పండి.",
+    "హలో": lambda ctx: "హలో! నేను యోధను. చెప్పండి.",
+    "హాయ్": lambda ctx: "హాయ్! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?",
 }
 
 def check_instant(text, ctx):
-    """Return instant response if question matches known patterns"""
-    text_lower = text.lower().strip()
-    for keyword, fn in INSTANT_RESPONSES.items():
-        if keyword in text_lower:
+    t = text.lower().strip()
+    for kw, fn in INSTANT_RESPONSES.items():
+        if kw in t:
             return fn(ctx)
     return None
 
@@ -57,22 +54,29 @@ def convert_to_wav(audio_bytes):
     return wav_bytes
 
 def clean_for_tts(text):
-    text = re.sub(r'\([^)]*[a-zA-Z]{3,}[^)]*\)', '', text)
-    text = re.sub(r'\*+', '', text)
-    text = re.sub(r'_+', '', text)
-    text = re.sub(r'"([^"]*)"', r'\1', text)
-    lines = text.split('\n')
-    telugu_lines = []
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        telugu_count = sum(1 for c in line if '\u0c00' <= c <= '\u0c7f')
-        english_count = sum(1 for c in line if 'a' <= c.lower() <= 'z')
-        if telugu_count > english_count:
-            telugu_lines.append(line)
-    result = ' '.join(telugu_lines) if telugu_lines else text
-    return re.sub(r'\s+', ' ', result).strip()
+    text = re.sub(r'[*/#_+|\[\]{}<>^~`\\]', '', text)
+    text = re.sub(r'\([^)]*[a-zA-Z]{2,}[^)]*\)', '', text)
+    text = re.sub(r'\b\d+\.\s*', '', text)
+    text = re.sub(r'\b[a-zA-Z]+\b', '', text)
+    text = re.sub(r'[.,;:!?]{2,}', '.', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    telugu_count = sum(1 for c in text if '\u0c00' <= c <= '\u0c7f')
+    if telugu_count < 3:
+        return "మళ్ళీ చెప్పగలరా?"
+    return text
+
+def build_system(ctx):
+    return (
+        "నువ్వు యోధ అనే తెలుగు AI అసిస్టెంట్‌వి.\n"
+        f"సమయం: {ctx['time']} IST, తేదీ: {ctx['date']}, వారం: {ctx['day']}\n"
+        "భారత రాజధాని న్యూఢిల్లీ, తెలంగాణ రాజధాని హైదరాబాద్, ఆంధ్రప్రదేశ్ రాజధాని అమరావతి.\n"
+        "నియమాలు:\n"
+        "1. ఎల్లప్పుడూ తెలుగులో మాత్రమే మాట్లాడు\n"
+        "2. ఇంగ్లీష్ పదాలు వాడకు\n"
+        "3. *, /, #, _ లాంటి గుర్తులు వాడకు\n"
+        "4. జవాబు 1-2 వాక్యాలలో ఇవ్వు\n"
+        "5. స్నేహంగా మాట్లాడు"
+    )
 
 def telugu_llm(messages):
     r = requests.post(
@@ -98,13 +102,7 @@ def do_tts(text):
         speaker="anushka", model="bulbul:v2")
     return base64.b64decode(r.audios[0])
 
-def build_system(ctx):
-    return f"""యోధ — తెలుగు AI అసిస్టెంట్.
-సమయం: {ctx['time']} IST | తేదీ: {ctx['date']} | వారం: {ctx['day']}
-జ్ఞానం: భారత రాజధాని న్యూఢిల్లీ, తెలంగాణ రాజధాని హైదరాబాద్, ఆంధ్రప్రదేశ్ రాజధాని అమరావతి.
-నియమాలు: తెలుగులో మాట్లాడు, * వాడకు, 1-2 వాక్యాలలో జవాబు ఇవ్వు, స్నేహంగా ఉండు."""
-
-app = FastAPI(title="Telugu Voice AI", version="4.1")
+app = FastAPI(title="Telugu Voice AI", version="4.2")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class Msg(BaseModel):
@@ -124,7 +122,7 @@ class AudioReq(BaseModel):
 @app.get("/")
 def health():
     ctx = get_context()
-    return {"status": "running", "version": "4.1", "time": ctx['time'], "date": ctx['date']}
+    return {"status": "running", "version": "4.2", "time": ctx['time'], "date": ctx['date']}
 
 @app.get("/assistant")
 def assistant():
@@ -140,53 +138,31 @@ def tts(req: TextReq):
 
 @app.post("/converse")
 def converse(req: ConvReq):
-    import time
-    t0 = time.time()
     try:
         ctx = get_context()
-
-        # STT
         wav = convert_to_wav(base64.b64decode(req.audio_base64))
         stt = client.speech_to_text.transcribe(
             file=("audio.wav", wav), model="saarika:v2.5", language_code="te-IN")
         user_text = stt.transcript
         if not user_text.strip():
             raise HTTPException(400, "Empty transcript")
-
-        t1 = time.time()
-        print(f"STT: {t1-t0:.2f}s | text: {user_text}")
-
-        # Check instant response first
         instant = check_instant(user_text, ctx)
         if instant:
-            print(f"INSTANT response: {instant}")
             audio = do_tts(instant)
-            t2 = time.time()
-            print(f"TTS: {t2-t1:.2f}s | Total: {t2-t0:.2f}s")
             history = list(req.history or [])
             history.append({"role": "user", "content": user_text})
             history.append({"role": "assistant", "content": instant})
             return {"transcript": user_text, "response": instant,
                     "audio_base64": base64.b64encode(audio).decode(), "history": history}
-
-        # LLM + TTS in parallel where possible
         msgs = [{"role": "system", "content": build_system(ctx)}]
         for m in (req.history or [])[-8:]:
             msgs.append({"role": m.role, "content": m.content})
         msgs.append({"role": "user", "content": user_text})
-
         response = telugu_llm(msgs)
-        t2 = time.time()
-        print(f"LLM: {t2-t1:.2f}s | response: {response}")
-
         audio = do_tts(response)
-        t3 = time.time()
-        print(f"TTS: {t3-t2:.2f}s | Total: {t3-t0:.2f}s")
-
         history = list(req.history or [])
         history.append({"role": "user", "content": user_text})
         history.append({"role": "assistant", "content": response})
-
         return {"transcript": user_text, "response": response,
                 "audio_base64": base64.b64encode(audio).decode(), "history": history}
     except HTTPException:

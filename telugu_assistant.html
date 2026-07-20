@@ -264,7 +264,7 @@ async function start() {
     source.connect(analyser);
     const freqData = new Uint8Array(analyser.frequencyBinCount);
 
-    const SPEECH_THRESHOLD = 12;
+    const SPEECH_THRESHOLD = 25;
     const SILENCE_HOLD_MS = 1500;
     const NO_SPEECH_TIMEOUT_MS = 10000;
 
@@ -285,7 +285,7 @@ async function start() {
           clearTimeout(noSpeechTimer);
         }
         clearTimeout(silenceTimer);
-        silenceTimer = setTimeout(() => {
+        silenceTimer = setTimeout(() => { // 2s silence hold
           if (rec?.state === 'recording') rec.stop();
         }, SILENCE_HOLD_MS);
       }

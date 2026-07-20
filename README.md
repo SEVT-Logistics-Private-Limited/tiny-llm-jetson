@@ -80,3 +80,25 @@ Audio In → Sarvam Saarika STT → Sarvam-105b LLM → Sarvam Bulbul TTS → Au
 - Streaming responses for under 4 second latency
 - Integrate into Paperclip / YODA platform
 - Offline edge deployment on Jetson Orin Nano
+
+---
+
+## Update — 20 July 2026 (v4.2)
+
+### API v4.2 Changes
+- Instant response cache — time, date, greetings answered in <100ms without hitting LLM
+- Real-time context injection — current IST time, date, day of week in every response
+- Strict Telugu-only output — English words, *, /, #, _ completely stripped before TTS
+- Stronger system prompt — enforces pure Telugu responses
+- General knowledge — India capitals, Telugu language facts built in
+- max_tokens reduced to 300 for faster LLM responses
+
+### Voice UI Changes
+- Silence detection threshold raised (12 → 25) — reduces false triggers from background noise
+- Web Audio API based VAD — auto-stops recording when user stops speaking
+- Shared audio element — fixes mobile autoplay policy issues for teammates
+
+### Fine-tuned Model
+- Trained on maya-research/IndicVault Telugu dataset (93,028 samples, 2M+ chunks)
+- 3 epochs on Colab A100-80GB, loss 2.17 → 0.76
+- Saved to HuggingFace: RishikUttejSasanala/tiny-llm-telugu-conv
