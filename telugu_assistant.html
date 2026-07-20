@@ -156,6 +156,8 @@ body{display:flex;align-items:center;justify-content:center;padding:16px}
 </div>
 
 <script>
+let sharedAudio = new Audio();
+sharedAudio.playsInline = true;
 const API = "https://52.140.52.237.nip.io";
 let active = false, rec = null, chunks = [], history = [], muted = false, curAudio = null, timer = null;
 
@@ -223,30 +225,88 @@ function toggleMute() {
   document.getElementById('volSvg').innerHTML = muted
     ? '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>'
     : '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>';
-  if (muted && curAudio) { curAudio.pause(); curAudio = null; }
+  if (muted && sharedAudio) { sharedAudio.pause(); }
 }
 
-function toggle() { active ? stop() : start(); }
+function toggle() { sharedAudio.play().catch(() => {}); active ? stop() : start(); }
+
+let audioCtx = null, analyser = null, silenceTimer = null, noSpeechTimer = null, monitorRAF = null, hasSpoken = false, endedByTimeout = false;
 
 async function start() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     chunks = [];
+    hasSpoken = false;
+    endedByTimeout = false;
     rec = new MediaRecorder(stream);
     rec.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
-    rec.onstop = () => { stream.getTracks().forEach(t => t.stop()); process(); };
+    rec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      cleanupMonitor();
+      if (endedByTimeout) {
+        chunks = [];
+        active = false;
+        setMic('idle');
+        setStatus('మాట్లాడలేదు కాబట్టి సంభాషణ ముగిసింది');
+        return;
+      }
+      process();
+    };
     rec.start(100);
     active = true;
     setMic('rec');
     setStatus('వింటున్నాను... తెలుగులో మాట్లాడండి', 'listening');
-    timer = setTimeout(() => rec?.state === 'recording' && rec.stop(), 8000);
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    const freqData = new Uint8Array(analyser.frequencyBinCount);
+
+    const SPEECH_THRESHOLD = 12;
+    const SILENCE_HOLD_MS = 1500;
+    const NO_SPEECH_TIMEOUT_MS = 10000;
+
+    noSpeechTimer = setTimeout(() => {
+      if (!hasSpoken) {
+        endedByTimeout = true;
+        if (rec?.state === 'recording') rec.stop();
+      }
+    }, NO_SPEECH_TIMEOUT_MS);
+
+    function monitor() {
+      if (!analyser) return;
+      analyser.getByteFrequencyData(freqData);
+      const avg = freqData.reduce((a, b) => a + b, 0) / freqData.length;
+      if (avg > SPEECH_THRESHOLD) {
+        if (!hasSpoken) {
+          hasSpoken = true;
+          clearTimeout(noSpeechTimer);
+        }
+        clearTimeout(silenceTimer);
+        silenceTimer = setTimeout(() => {
+          if (rec?.state === 'recording') rec.stop();
+        }, SILENCE_HOLD_MS);
+      }
+      monitorRAF = requestAnimationFrame(monitor);
+    }
+    monitor();
   } catch {
     setStatus('మైక్ అనుమతి అవసరం');
   }
 }
 
+function cleanupMonitor() {
+  if (monitorRAF) cancelAnimationFrame(monitorRAF);
+  clearTimeout(silenceTimer);
+  clearTimeout(noSpeechTimer);
+  if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; }
+  analyser = null;
+}
+
 function stop() {
-  clearTimeout(timer);
+  cleanupMonitor();
   active = false;
   if (rec?.state === 'recording') rec.stop();
 }
@@ -298,10 +358,10 @@ function playAudio(b64) {
     const buf = new Uint8Array(bytes.length);
     for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
     const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-    curAudio = new Audio(url);
-    curAudio.onended = () => { URL.revokeObjectURL(url); curAudio = null; setMic('idle'); setStatus('మాట్లాడటానికి సిద్ధంగా ఉంది'); res(); };
-    curAudio.onerror = () => { res(); };
-    curAudio.play().catch(() => res());
+    sharedAudio.src = url;
+    sharedAudio.onended = () => { URL.revokeObjectURL(url); setMic('idle'); setStatus('మాట్లాడటానికి సిద్ధంగా ఉంది'); res(); };
+    sharedAudio.onerror = (e) => { console.error('Audio error:', e); res(); };
+    sharedAudio.play().catch(err => { console.error('Playback blocked:', err.name); res(); });
   });
 }
 </script>
