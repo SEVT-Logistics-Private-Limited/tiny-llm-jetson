@@ -102,3 +102,8 @@ Audio In → Sarvam Saarika STT → Sarvam-105b LLM → Sarvam Bulbul TTS → Au
 - Trained on maya-research/IndicVault Telugu dataset (93,028 samples, 2M+ chunks)
 - 3 epochs on Colab A100-80GB, loss 2.17 → 0.76
 - Saved to HuggingFace: RishikUttejSasanala/tiny-llm-telugu-conv
+
+## Update: Telugu Voice Assistant (Yodha)
+
+Live Telugu voice AI assistant with RAG answers grounded in vehicle manuals.
+Live: https://52.140.52.237.nip.io/assistant
