@@ -5,257 +5,338 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>యోధ — Telugu Voice AI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;background:#09090b;font-family:'Inter',sans-serif;color:#e4e4e7;-webkit-font-smoothing:antialiased}
-body{display:flex;align-items:center;justify-content:center;padding:16px}
+html,body{height:100%;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;background:#f0ede8}
 
-.app{width:100%;max-width:420px;height:calc(100vh - 32px);max-height:780px;background:#09090b;border:0.5px solid #27272a;border-radius:24px;display:flex;flex-direction:column;overflow:hidden;position:relative}
+/* ─── Color tokens ─── */
+:root{
+  --bg:#f0ede8;
+  --surface:#ddd8ce;
+  --surface2:#ccc6ba;
+  --green:#7a8c6a;
+  --green-dark:#4e5e40;
+  --green-light:#b8c9a4;
+  --green-orb:#9aad88;
+  --text:#3d4a30;
+  --text-muted:#7a8c6a;
+  --text-dim:#a8b898;
+  --btn-end:#c94b4b;
+  --radius:24px;
+}
 
-/* Header */
-.hdr{padding:18px 20px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid #18181b;flex-shrink:0}
-.brand{display:flex;align-items:center;gap:10px}
-.bmark{width:34px;height:34px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.bmark svg{width:17px;height:17px;fill:#fff}
-.bname{font-size:14px;font-weight:600;color:#fafafa;letter-spacing:-0.3px}
-.bsub{font-size:10px;color:#52525b;margin-top:1px}
-.live-chip{display:flex;align-items:center;gap:5px;background:#18181b;border:0.5px solid #27272a;border-radius:20px;padding:5px 10px}
-.ldot{width:6px;height:6px;border-radius:50%;background:#22c55e;flex-shrink:0}
-.live-chip span{font-size:11px;color:#71717a}
+body{display:flex;align-items:center;justify-content:center;min-height:100%}
+.screen{display:none;width:100%;max-width:420px;height:100vh;max-height:780px;position:relative;flex-direction:column;align-items:center;justify-content:flex-start;background:var(--bg)}
+.screen.active{display:flex}
 
-/* Chat */
-.chat{flex:1;overflow-y:auto;padding:20px 16px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
-.chat::-webkit-scrollbar{width:0}
+/* ═══════════════════════════════
+   HOME SCREEN
+═══════════════════════════════ */
+#home{padding:0}
 
-.day-sep{text-align:center;font-size:10px;color:#3f3f46;letter-spacing:0.6px;text-transform:uppercase;margin:4px 0 8px;flex-shrink:0}
+.home-header{width:100%;padding:56px 32px 32px;text-align:center}
+.greeting{font-size:22px;font-weight:500;color:var(--text);letter-spacing:-0.5px}
 
-.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:40px 20px;text-align:center}
-.empty-icon{width:52px;height:52px;background:#18181b;border:0.5px solid #27272a;border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:4px}
-.empty-icon svg{width:24px;height:24px;fill:#6366f1}
-.empty h2{font-size:15px;font-weight:600;color:#fafafa}
-.empty p{font-size:13px;color:#52525b;line-height:1.6;max-width:240px}
+.call-card{width:calc(100% - 32px);margin:8px 16px;background:var(--surface);border-radius:20px;overflow:hidden;cursor:pointer;transition:transform .18s ease, box-shadow .18s ease;flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;min-height:220px}
+.call-card:hover{transform:scale(0.985);box-shadow:0 4px 24px rgba(74,92,58,.12)}
+.call-card:active{transform:scale(0.97)}
 
-.row{display:flex;align-items:flex-end;gap:8px;animation:fadeUp .25s ease}
-.row.u{flex-direction:row-reverse}
-@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.call-card .phone-icon{width:36px;height:36px;color:var(--green-dark)}
+.call-card .call-label{font-size:22px;font-weight:500;color:var(--green-dark);letter-spacing:-0.3px}
 
-.av{width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:#fff}
-.av.ai{background:linear-gradient(135deg,#6366f1,#8b5cf6)}
-.av.ai svg{width:12px;height:12px;fill:#fff}
-.av.user{background:#27272a;color:#a1a1aa}
+/* ═══════════════════════════════
+   ACTIVE CALL SCREEN
+═══════════════════════════════ */
+#call{padding:0;background:var(--bg)}
 
-.bbl{max-width:78%;padding:9px 13px;border-radius:16px;font-size:13px;line-height:1.65;word-break:break-word}
-.bbl.ai{background:#18181b;border:0.5px solid #27272a;border-bottom-left-radius:4px;color:#d4d4d8}
-.bbl.user{background:#6366f1;border-bottom-right-radius:4px;color:#fff}
-.bbl .lbl{font-size:9px;color:#52525b;font-weight:500;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px}
+.call-header{width:100%;padding:52px 24px 20px;text-align:center}
+.call-name{font-size:18px;font-weight:500;color:var(--green-dark);letter-spacing:-0.3px}
+.call-timer{font-size:13px;color:var(--text-muted);margin-top:4px;font-variant-numeric:tabular-nums;min-height:18px}
 
-.typing-row{display:flex;align-items:flex-end;gap:8px;animation:fadeUp .25s ease}
-.typing-dots{display:flex;align-items:center;gap:4px;padding:12px 14px;background:#18181b;border:0.5px solid #27272a;border-radius:16px;border-bottom-left-radius:4px}
-.td{width:5px;height:5px;border-radius:50%;background:#3f3f46;animation:tdAnim 1.2s ease-in-out infinite}
-.td:nth-child(2){animation-delay:.2s}.td:nth-child(3){animation-delay:.4s}
-@keyframes tdAnim{0%,60%,100%{transform:translateY(0);background:#3f3f46}30%{transform:translateY(-5px);background:#6366f1}}
+/* Orb */
+.orb-wrap{flex:1;display:flex;align-items:center;justify-content:center;width:100%}
+.orb-outer{width:220px;height:220px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(154,173,136,.15);position:relative}
+.orb-outer::before{
+  content:'';position:absolute;inset:-12px;border-radius:50%;
+  background:rgba(154,173,136,.08);
+  animation:outerPulse 3s ease-in-out infinite;
+}
+@keyframes outerPulse{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.06);opacity:1}}
 
-/* Bottom */
-.bot{padding:14px 20px 24px;border-top:0.5px solid #18181b;display:flex;flex-direction:column;align-items:center;gap:12px;flex-shrink:0}
+.orb{
+  width:160px;height:160px;
+  background:radial-gradient(ellipse at 38% 35%, #c5d4b4 0%, #9aad88 45%, #7a8c6a 100%);
+  border-radius:50%;
+  position:relative;
+  transition:border-radius .4s ease;
+  box-shadow:0 8px 40px rgba(122,140,106,.35), inset 0 -8px 20px rgba(74,92,58,.15), inset 0 8px 20px rgba(255,255,255,.25);
+}
+/* idle: gentle float */
+.orb.idle{animation:orbFloat 4s ease-in-out infinite}
+@keyframes orbFloat{
+  0%,100%{transform:translateY(0) scale(1)}
+  50%{transform:translateY(-8px) scale(1.02)}
+}
+/* listening: energetic pulse + morph */
+.orb.listening{
+  animation:orbListen 1.4s ease-in-out infinite;
+  background:radial-gradient(ellipse at 38% 35%, #d4e4c0 0%, #a8c090 45%, #7a9c60 100%);
+  box-shadow:0 8px 48px rgba(100,160,80,.45), inset 0 -8px 20px rgba(60,100,40,.15), inset 0 8px 20px rgba(255,255,255,.3);
+}
+@keyframes orbListen{
+  0%{transform:scale(1);border-radius:50%}
+  25%{transform:scale(1.05);border-radius:52% 48% 55% 45%/48% 52% 48% 52%}
+  50%{transform:scale(1.08);border-radius:50%}
+  75%{transform:scale(1.05);border-radius:47% 53% 45% 55%/53% 47% 53% 47%}
+  100%{transform:scale(1);border-radius:50%}
+}
+/* speaking: larger morphing blob */
+.orb.speaking{
+  animation:orbSpeak .9s ease-in-out infinite;
+  background:radial-gradient(ellipse at 38% 35%, #d0e4b8 0%, #a0bc80 45%, #6a9060 100%);
+  box-shadow:0 12px 56px rgba(90,150,70,.5), inset 0 -10px 24px rgba(50,90,30,.2), inset 0 10px 24px rgba(255,255,255,.35);
+}
+@keyframes orbSpeak{
+  0%{transform:scale(1);border-radius:50%}
+  20%{transform:scale(1.1);border-radius:55% 45% 58% 42%/42% 58% 42% 58%}
+  40%{transform:scale(1.06);border-radius:48% 52% 44% 56%/56% 44% 56% 44%}
+  60%{transform:scale(1.12);border-radius:53% 47% 52% 48%/47% 53% 47% 53%}
+  80%{transform:scale(1.07);border-radius:50% 50% 48% 52%/52% 48% 52% 48%}
+  100%{transform:scale(1);border-radius:50%}
+}
+/* thinking: slow morph */
+.orb.thinking{
+  animation:orbThink 2.2s ease-in-out infinite;
+  background:radial-gradient(ellipse at 38% 35%, #c8d8b0 0%, #98aa80 45%, #788a60 100%);
+  opacity:.85;
+}
+@keyframes orbThink{
+  0%,100%{transform:scale(.96);border-radius:50%}
+  50%{transform:scale(1.04);border-radius:48% 52% 46% 54%/54% 46% 54% 46%}
+}
 
-.sbar{height:20px;display:flex;align-items:center;gap:7px;font-size:12px;color:#52525b;transition:all .3s}
-.sbar.listening{color:#f87171}
-.sbar.speaking{color:#34d399}
-.sbar.thinking{color:#a78bfa}
-.sdot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
-.sbar.listening .sdot{animation:sblink 1s ease-in-out infinite}
-.sbar.thinking .sdot{animation:sblink .6s ease-in-out infinite}
-@keyframes sblink{0%,100%{opacity:1}50%{opacity:.3}}
+.status-label{
+  font-size:13px;color:var(--text-muted);letter-spacing:.3px;
+  height:20px;display:flex;align-items:center;gap:6px;
+  margin-bottom:8px;transition:color .3s;
+}
+.status-dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+.status-label.listening{color:#5a9040}
+.status-label.speaking{color:#4a7a30}
+.status-label.thinking{color:var(--text-muted);animation:dimPulse 1.2s ease-in-out infinite}
+@keyframes dimPulse{0%,100%{opacity:1}50%{opacity:.45}}
 
-.wave-row{display:flex;align-items:center;gap:2.5px;height:16px}
-.wb{width:2px;border-radius:2px;background:currentColor;animation:wbAnim 1s ease-in-out infinite}
-.wb:nth-child(1){height:4px;animation-delay:0s}.wb:nth-child(2){height:10px;animation-delay:.1s}.wb:nth-child(3){height:16px;animation-delay:.2s}.wb:nth-child(4){height:8px;animation-delay:.3s}.wb:nth-child(5){height:4px;animation-delay:.4s}
-@keyframes wbAnim{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+/* Controls */
+.call-controls{
+  width:100%;padding:20px 32px 48px;
+  display:flex;align-items:center;justify-content:center;gap:48px;
+}
 
-.ctls{display:flex;align-items:center;gap:18px}
+.ctrl-btn{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  cursor:pointer;background:none;border:none;padding:0;
+}
+.ctrl-icon{
+  width:60px;height:60px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--surface2);transition:background .2s, transform .15s;
+}
+.ctrl-btn:hover .ctrl-icon{background:var(--surface);transform:scale(1.05)}
+.ctrl-btn:active .ctrl-icon{transform:scale(.94)}
+.ctrl-icon svg{width:22px;height:22px;color:var(--green-dark)}
+.ctrl-label{font-size:12px;color:var(--text-muted);font-weight:400;letter-spacing:.2px}
 
-.ibtn{width:42px;height:42px;border-radius:50%;border:0.5px solid #27272a;background:#18181b;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;flex-shrink:0}
-.ibtn:hover{background:#27272a;border-color:#3f3f46}
-.ibtn svg{width:16px;height:16px;stroke:#71717a;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:stroke .15s}
-.ibtn:hover svg{stroke:#a1a1aa}
-.ibtn.muted svg{stroke:#ef4444}
+.ctrl-btn.end .ctrl-icon{background:#e8a8a8}
+.ctrl-btn.end:hover .ctrl-icon{background:#dda0a0}
+.ctrl-btn.end .ctrl-icon svg{color:var(--btn-end)}
+.ctrl-btn.end .ctrl-label{color:var(--btn-end)}
 
-.mic-wrap{position:relative;display:flex;align-items:center;justify-content:center}
-.mic-ring{position:absolute;width:80px;height:80px;border-radius:50%;border:1px solid #6366f130;animation:ringPulse 2s ease-out infinite;pointer-events:none;opacity:0}
-.mic-ring.active{opacity:1}
-@keyframes ringPulse{0%{transform:scale(.8);opacity:.6}100%{transform:scale(1.4);opacity:0}}
+.ctrl-btn.muted .ctrl-icon{background:var(--surface)}
+.ctrl-btn.muted .ctrl-icon svg{color:var(--green-dark)}
 
-.mic{width:64px;height:64px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s cubic-bezier(.34,1.56,.64,1);position:relative;z-index:1;flex-shrink:0}
-.mic.idle{background:linear-gradient(135deg,#6366f1,#8b5cf6);box-shadow:0 8px 24px #6366f140}
-.mic.idle:hover{transform:scale(1.06);box-shadow:0 12px 32px #6366f160}
-.mic.rec{background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 8px 24px #ef444440}
-.mic.speaking{background:linear-gradient(135deg,#10b981,#059669);box-shadow:0 8px 24px #10b98140}
-.mic.thinking{background:linear-gradient(135deg,#8b5cf6,#7c3aed);box-shadow:0 8px 24px #8b5cf640}
-.mic svg{width:24px;height:24px;fill:#fff;transition:all .2s}
-.mic .sq{width:14px;height:14px;background:#fff;border-radius:3px;display:none}
-
-.hint{font-size:10px;color:#3f3f46;text-align:center}
+/* hint when transcript available */
+.transcript-peek{
+  width:calc(100% - 32px);margin:0 16px;
+  background:var(--surface);border-radius:14px;
+  padding:12px 16px;font-size:13px;color:var(--text-muted);
+  line-height:1.55;max-height:80px;overflow:hidden;
+  text-overflow:ellipsis;
+  display:none;
+  margin-bottom:12px;
+}
+.transcript-peek.visible{display:block}
 </style>
 </head>
 <body>
-<div class="app">
 
-  <div class="hdr">
-    <div class="brand">
-      <div class="bmark">
-        <svg viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 1 4 4v4a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zm-7 10a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h-2v-2.07A7 7 0 0 1 5 12z"/></svg>
-      </div>
-      <div>
-        <div class="bname">యోధ — Telugu AI</div>
-        <div class="bsub">Powered by Sarvam AI · Yodha AI</div>
-      </div>
-    </div>
-    <div class="live-chip">
-      <div class="ldot"></div>
-      <span id="chipTxt">Ready</span>
+<!-- ═══ HOME SCREEN ═══ -->
+<div class="screen active" id="home">
+  <div class="home-header">
+    <div class="greeting" id="greeting">నమస్కారం!</div>
+  </div>
+
+  <div class="call-card" id="callYodha" onclick="startCall()">
+    <svg class="phone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8a19.79 19.79 0 01-3.07-8.68A2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/>
+    </svg>
+    <span class="call-label">యోధ</span>
+  </div>
+</div>
+
+<!-- ═══ ACTIVE CALL SCREEN ═══ -->
+<div class="screen" id="call">
+  <div class="call-header">
+    <div class="call-name">యోధ</div>
+    <div class="call-timer" id="callTimer"></div>
+  </div>
+
+  <div class="orb-wrap">
+    <div class="orb-outer">
+      <div class="orb idle" id="orb"></div>
     </div>
   </div>
 
-  <div class="chat" id="chat">
-    <div class="empty" id="empty">
-      <div class="empty-icon">
-        <svg viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 1 4 4v4a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zm-7 10a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h-2v-2.07A7 7 0 0 1 5 12z"/></svg>
-      </div>
-      <h2>నమస్కారం! నేను యోధ.</h2>
-      <p>మైక్ నొక్కి తెలుగులో మాట్లాడండి. నేను వింటాను మరియు జవాబు ఇస్తాను.</p>
-    </div>
+  <div class="status-label" id="statusLabel">
+    <div class="status-dot"></div>
+    <span id="statusTxt">సంభాషించడానికి సిద్ధం</span>
   </div>
 
-  <div class="bot">
-    <div class="sbar" id="sbar">
-      <div class="sdot"></div>
-      <span id="stxt">మాట్లాడటానికి సిద్ధంగా ఉంది</span>
-    </div>
+  <div class="transcript-peek" id="transcriptPeek"></div>
 
-    <div class="ctls">
-      <div class="ibtn" id="clearBtn" onclick="clearChat()">
-        <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+  <div class="call-controls">
+    <button class="ctrl-btn" id="muteBtn" onclick="toggleMute()">
+      <div class="ctrl-icon">
+        <svg id="muteIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+          <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
+        </svg>
       </div>
+      <span class="ctrl-label">Mute</span>
+    </button>
 
-      <div class="mic-wrap">
-        <div class="mic-ring" id="ring"></div>
-        <button class="mic idle" id="mic" onclick="toggle()">
-          <svg id="micSvg" viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 1 4 4v4a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zm-7 10a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h-2v-2.07A7 7 0 0 1 5 12z"/></svg>
-          <div class="sq" id="sq"></div>
-        </button>
+    <button class="ctrl-btn end" onclick="endCall()">
+      <div class="ctrl-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-3-2.31M2.07 4.74A19.79 19.79 0 005.14 13.37M1 1l22 22"/>
+        </svg>
       </div>
-
-      <div class="ibtn" id="volBtn" onclick="toggleMute()">
-        <svg id="volSvg" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-      </div>
-    </div>
-
-    <div class="hint">నొక్కండి మాట్లాడడానికి · మళ్ళీ నొక్కండి ఆపడానికి</div>
+      <span class="ctrl-label">End call</span>
+    </button>
   </div>
 </div>
 
 <script>
+const API = "https://52.140.52.237.nip.io";
 let sharedAudio = new Audio();
 sharedAudio.playsInline = true;
-const API = "https://52.140.52.237.nip.io";
-let active = false, rec = null, chunks = [], history = [], muted = false, curAudio = null, timer = null;
 
-function setStatus(txt, mode) {
-  const b = document.getElementById('sbar');
-  const t = document.getElementById('stxt');
-  b.className = 'sbar' + (mode ? ' ' + mode : '');
-  t.textContent = txt;
-  document.getElementById('chipTxt').textContent =
-    mode === 'listening' ? 'Listening' : mode === 'speaking' ? 'Speaking' : mode === 'thinking' ? 'Thinking' : 'Ready';
+let active = false, rec = null, chunks = [], history = [], muted = false;
+let audioCtx = null, analyser = null, silenceTimer = null, noSpeechTimer = null, monitorRAF = null;
+let hasSpoken = false, endedByTimeout = false, userStopped = false;
+let timerInterval = null, callSeconds = 0;
+
+/* ── Greeting ── */
+(function setGreeting() {
+  const h = new Date().getHours();
+  const g = h < 12 ? 'శుభోదయం' : h < 17 ? 'శుభ మధ్యాహ్నం' : 'శుభ సాయంత్రం';
+  document.getElementById('greeting').textContent = g;
+})();
+
+/* ── Screen transitions ── */
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
 }
 
-function setMic(state) {
-  const m = document.getElementById('mic');
-  const sv = document.getElementById('micSvg');
-  const sq = document.getElementById('sq');
-  const rg = document.getElementById('ring');
-  m.className = 'mic ' + state;
-  sv.style.display = state === 'rec' ? 'none' : 'block';
-  sq.style.display = state === 'rec' ? 'block' : 'none';
-  rg.className = 'mic-ring' + (state === 'rec' ? ' active' : '');
+function startCall() {
+  showScreen('call');
+  callSeconds = 0;
+  updateTimer();
+  timerInterval = setInterval(() => { callSeconds++; updateTimer(); }, 1000);
+  sharedAudio.play().catch(() => {});
+  start();
 }
 
-function addMsg(type, label, text) {
-  const chat = document.getElementById('chat');
-  document.getElementById('empty') && document.getElementById('empty').remove();
-  const row = document.createElement('div');
-  row.className = 'row' + (type === 'user' ? ' u' : '');
-  const isAI = type === 'ai';
-  row.innerHTML = `
-    <div class="av ${isAI ? 'ai' : 'user'}">
-      ${isAI ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>' : 'మీ'}
-    </div>
-    <div class="bbl ${type}">
-      <div class="lbl">${label}</div>
-      ${text}
-    </div>`;
-  chat.appendChild(row);
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function showTyping() {
-  const chat = document.getElementById('chat');
-  const d = document.createElement('div');
-  d.className = 'typing-row'; d.id = 'typing';
-  d.innerHTML = `<div class="av ai"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg></div><div class="typing-dots"><div class="td"></div><div class="td"></div><div class="td"></div></div>`;
-  chat.appendChild(d);
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function hideTyping() { document.getElementById('typing')?.remove(); }
-
-function clearChat() {
+function endCall() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  callSeconds = 0;
+  active = false;
+  userStopped = true;
+  sharedAudio.pause();
+  sharedAudio.currentTime = 0;
+  if (rec?.state === 'recording') rec.stop();
+  cleanupMonitor();
   history = [];
-  const chat = document.getElementById('chat');
-  chat.innerHTML = `<div class="empty" id="empty"><div class="empty-icon"><svg viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 1 4 4v4a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4zm-7 10a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h-2v-2.07A7 7 0 0 1 5 12z"/></svg></div><h2>నమస్కారం! నేను యోధ.</h2><p>మైక్ నొక్కి తెలుగులో మాట్లాడండి. నేను వింటాను మరియు జవాబు ఇస్తాను.</p></div>`;
-  setStatus('మాట్లాడటానికి సిద్ధంగా ఉంది');
-  if (active) { active = false; rec?.stop(); setMic('idle'); }
+  setOrb('idle');
+  setStatus('', '');
+  document.getElementById('transcriptPeek').classList.remove('visible');
+  showScreen('home');
 }
 
+function updateTimer() {
+  const m = Math.floor(callSeconds / 60).toString().padStart(2, '0');
+  const s = (callSeconds % 60).toString().padStart(2, '0');
+  document.getElementById('callTimer').textContent = `${m}:${s}`;
+}
+
+/* ── Mute ── */
 function toggleMute() {
   muted = !muted;
-  const btn = document.getElementById('volBtn');
-  btn.className = 'ibtn' + (muted ? ' muted' : '');
-  document.getElementById('volSvg').innerHTML = muted
-    ? '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>'
-    : '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>';
-  if (muted && sharedAudio) { sharedAudio.pause(); }
+  const btn = document.getElementById('muteBtn');
+  btn.classList.toggle('muted', muted);
+  document.getElementById('muteIcon').innerHTML = muted
+    ? `<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23M12 19v4M8 23h8"/>`
+    : `<path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>`;
+  if (muted && sharedAudio) sharedAudio.pause();
 }
 
-function toggle() { sharedAudio.play().catch(() => {}); active ? stop() : start(); }
+/* ── Orb state ── */
+function setOrb(state) {
+  const orb = document.getElementById('orb');
+  orb.className = 'orb ' + (state || 'idle');
+}
 
-let audioCtx = null, analyser = null, silenceTimer = null, noSpeechTimer = null, monitorRAF = null, hasSpoken = false, endedByTimeout = false;
+function setStatus(txt, mode) {
+  const sl = document.getElementById('statusLabel');
+  const st = document.getElementById('statusTxt');
+  sl.className = 'status-label' + (mode ? ' ' + mode : '');
+  st.textContent = txt || 'సంభాషించడానికి సిద్ధం';
+}
 
+function showTranscript(text) {
+  const el = document.getElementById('transcriptPeek');
+  if (text) { el.textContent = text; el.classList.add('visible'); }
+  else { el.classList.remove('visible'); }
+}
+
+/* ── Recording ── */
 async function start() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     chunks = [];
     hasSpoken = false;
     endedByTimeout = false;
+    userStopped = false;
     rec = new MediaRecorder(stream);
     rec.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
     rec.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
       cleanupMonitor();
-      if (endedByTimeout) {
+      if (endedByTimeout || userStopped) {
         chunks = [];
         active = false;
-        setMic('idle');
-        setStatus('మాట్లాడలేదు కాబట్టి సంభాషణ ముగిసింది');
+        setOrb('idle');
+        setStatus('సంభాషించడానికి సిద్ధం', '');
         return;
       }
       process();
     };
     rec.start(100);
     active = true;
-    setMic('rec');
-    setStatus('వింటున్నాను... తెలుగులో మాట్లాడండి', 'listening');
+    setOrb('listening');
+    setStatus('వింటున్నాను...', 'listening');
 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const source = audioCtx.createMediaStreamSource(stream);
@@ -280,12 +361,9 @@ async function start() {
       analyser.getByteFrequencyData(freqData);
       const avg = freqData.reduce((a, b) => a + b, 0) / freqData.length;
       if (avg > SPEECH_THRESHOLD) {
-        if (!hasSpoken) {
-          hasSpoken = true;
-          clearTimeout(noSpeechTimer);
-        }
+        if (!hasSpoken) { hasSpoken = true; clearTimeout(noSpeechTimer); }
         clearTimeout(silenceTimer);
-        silenceTimer = setTimeout(() => { // 2s silence hold
+        silenceTimer = setTimeout(() => {
           if (rec?.state === 'recording') rec.stop();
         }, SILENCE_HOLD_MS);
       }
@@ -293,7 +371,7 @@ async function start() {
     }
     monitor();
   } catch {
-    setStatus('మైక్ అనుమతి అవసరం');
+    setStatus('మైక్ అనుమతి అవసరం', '');
   }
 }
 
@@ -305,17 +383,10 @@ function cleanupMonitor() {
   analyser = null;
 }
 
-function stop() {
-  cleanupMonitor();
-  active = false;
-  if (rec?.state === 'recording') rec.stop();
-}
-
 async function process() {
-  if (!chunks.length) { setMic('idle'); setStatus('మాట్లాడటానికి సిద్ధంగా ఉంది'); return; }
-  setMic('thinking');
+  if (!chunks.length) { setOrb('idle'); setStatus('సంభాషించడానికి సిద్ధం', ''); return; }
+  setOrb('thinking');
   setStatus('ఆలోచిస్తున్నాను...', 'thinking');
-  showTyping();
 
   const blob = new Blob(chunks, { type: 'audio/webm' });
   const b64 = await new Promise(res => {
@@ -331,37 +402,39 @@ async function process() {
       body: JSON.stringify({ audio_base64: b64, history })
     });
     const data = await resp.json();
-    hideTyping();
-    if (data.transcript) addMsg('user', 'మీరు', data.transcript);
-    if (data.response) addMsg('ai', 'యోధ', data.response);
+    if (data.transcript) showTranscript(data.transcript);
     if (data.history) history = data.history;
     if (data.audio_base64 && !muted) {
       await playAudio(data.audio_base64);
     } else {
-      setMic('idle');
-      setStatus('మాట్లాడటానికి సిద్ధంగా ఉంది');
+      setOrb('idle');
+      setStatus('సంభాషించడానికి సిద్ధం', '');
     }
-    if (active) setTimeout(() => start(), 400);
+    if (active && !userStopped) setTimeout(() => start(), 400);
   } catch {
-    hideTyping();
-    setStatus('లోపం వచ్చింది — మళ్ళీ ప్రయత్నించండి');
-    setMic('idle');
+    setStatus('లోపం వచ్చింది — మళ్ళీ ప్రయత్నించండి', '');
+    setOrb('idle');
     active = false;
   }
 }
 
 function playAudio(b64) {
   return new Promise(res => {
-    setMic('speaking');
+    setOrb('speaking');
     setStatus('జవాబు చెప్తున్నాను...', 'speaking');
     const bytes = atob(b64);
     const buf = new Uint8Array(bytes.length);
     for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
     const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
     sharedAudio.src = url;
-    sharedAudio.onended = () => { URL.revokeObjectURL(url); setMic('idle'); setStatus('మాట్లాడటానికి సిద్ధంగా ఉంది'); res(); };
-    sharedAudio.onerror = (e) => { console.error('Audio error:', e); res(); };
-    sharedAudio.play().catch(err => { console.error('Playback blocked:', err.name); res(); });
+    sharedAudio.onended = () => {
+      URL.revokeObjectURL(url);
+      setOrb('idle');
+      setStatus('సంభాషించడానికి సిద్ధం', '');
+      res();
+    };
+    sharedAudio.onerror = () => res();
+    sharedAudio.play().catch(() => res());
   });
 }
 </script>
