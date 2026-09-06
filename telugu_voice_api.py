@@ -1,4 +1,6 @@
-import base64, sarvamai, requests, tempfile, subprocess, os, re
+import base64, sarvamai, requests, tempfile, subprocess, os, re, io, wave
+from google import genai as google_genai
+from google.genai import types as genai_types
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -7,8 +9,11 @@ from typing import List, Optional
 from datetime import datetime
 import pytz
 
-SARVAM_KEY = "sk_javz0il8_d4GhUv9PhBOiH1jlHEG3ryOT"
-client = sarvamai.SarvamAI(api_subscription_key=SARVAM_KEY)
+SARVAM_KEY = os.environ["SARVAM_API_KEY"]
+GEMINI_KEY = os.environ["GEMINI_API_KEY"]
+
+sarvam_client = sarvamai.SarvamAI(api_subscription_key=SARVAM_KEY)
+gemini_client = google_genai.Client(api_key=GEMINI_KEY)
 
 def get_context():
     ist = pytz.timezone('Asia/Kolkata')
@@ -60,7 +65,7 @@ def clean_for_tts(text):
     text = re.sub(r'\b[a-zA-Z]+\b', '', text)
     text = re.sub(r'[.,;:!?]{2,}', '.', text)
     text = re.sub(r'\s+', ' ', text).strip()
-    telugu_count = sum(1 for c in text if '\u0c00' <= c <= '\u0c7f')
+    telugu_count = sum(1 for c in text if 'ఀ' <= c <= '౿')
     if telugu_count < 3:
         return "మళ్ళీ చెప్పగలరా?"
     return text
@@ -79,30 +84,52 @@ def build_system(ctx):
     )
 
 def telugu_llm(messages):
-    r = requests.post(
-        "https://api.sarvam.ai/v1/chat/completions",
-        headers={"api-subscription-key": SARVAM_KEY},
-        json={"model": "sarvam-105b", "messages": messages, "max_tokens": 300},
-        timeout=30
+    system_msg = messages[0]["content"]
+    contents = []
+    for m in messages[1:]:
+        role = "user" if m["role"] == "user" else "model"
+        contents.append(genai_types.Content(
+            role=role,
+            parts=[genai_types.Part(text=m["content"])]
+        ))
+    response = gemini_client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=contents,
+        config=genai_types.GenerateContentConfig(
+            system_instruction=system_msg,
+            max_output_tokens=300
+        )
     )
-    data = r.json()
-    if "choices" not in data:
-        raise Exception(f"LLM error: {data}")
-    content = data["choices"][0]["message"].get("content")
-    if not content:
-        reasoning = data["choices"][0]["message"].get("reasoning_content", "")
-        telugu_lines = [l.strip() for l in reasoning.split('\n')
-                        if l.strip() and sum(1 for c in l if '\u0c00' <= c <= '\u0c7f') > 3]
-        content = ' '.join(telugu_lines[-2:]) if telugu_lines else "మళ్ళీ చెప్పగలరా?"
-    return clean_for_tts(content)
+    return clean_for_tts(response.text)
+
+def _pcm_to_wav(pcm_data, rate=24000):
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm_data)
+    return buf.getvalue()
 
 def do_tts(text):
-    r = client.text_to_speech.convert(
-        text=text, target_language_code="te-IN",
-        speaker="anushka", model="bulbul:v2")
-    return base64.b64decode(r.audios[0])
+    response = gemini_client.models.generate_content(
+        model="gemini-2.0-flash-preview-tts",
+        contents=text,
+        config=genai_types.GenerateContentConfig(
+            response_modalities=["AUDIO"],
+            speech_config=genai_types.SpeechConfig(
+                voice_config=genai_types.VoiceConfig(
+                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                        voice_name="Aoede"
+                    )
+                )
+            )
+        )
+    )
+    pcm_data = response.candidates[0].content.parts[0].inline_data.data
+    return _pcm_to_wav(pcm_data)
 
-app = FastAPI(title="Telugu Voice AI", version="4.2")
+app = FastAPI(title="Telugu Voice AI", version="5.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class Msg(BaseModel):
@@ -122,7 +149,7 @@ class AudioReq(BaseModel):
 @app.get("/")
 def health():
     ctx = get_context()
-    return {"status": "running", "version": "4.2", "time": ctx['time'], "date": ctx['date']}
+    return {"status": "running", "version": "5.0", "time": ctx['time'], "date": ctx['date']}
 
 @app.get("/assistant")
 def assistant():
@@ -141,7 +168,7 @@ def converse(req: ConvReq):
     try:
         ctx = get_context()
         wav = convert_to_wav(base64.b64decode(req.audio_base64))
-        stt = client.speech_to_text.transcribe(
+        stt = sarvam_client.speech_to_text.transcribe(
             file=("audio.wav", wav), model="saarika:v2.5", language_code="te-IN")
         user_text = stt.transcript
         if not user_text.strip():
@@ -175,7 +202,7 @@ def voice(req: AudioReq):
     try:
         ctx = get_context()
         wav = convert_to_wav(base64.b64decode(req.audio_base64))
-        stt = client.speech_to_text.transcribe(
+        stt = sarvam_client.speech_to_text.transcribe(
             file=("audio.wav", wav), model="saarika:v2.5", language_code="te-IN")
         text = stt.transcript
         if not text.strip():
