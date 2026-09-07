@@ -115,8 +115,20 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
 }
 .warmup-dot.ready{background:#b8ff80}
 
+.test-sound-btn{
+  width:100%;margin-top:14px;
+  padding:14px 20px;
+  background:#f0f5ea;border:1.5px solid #c8d8a8;border-radius:14px;
+  color:#4a6030;font-size:14px;font-weight:500;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:background .15s;
+}
+.test-sound-btn:hover{background:#e4eeda}
+.test-sound-btn:active{transform:scale(.98)}
+.test-sound-btn.testing{opacity:.6;pointer-events:none}
+
 .disclaimer{
-  width:100%;margin-top:20px;
+  width:100%;margin-top:16px;
   font-size:12px;color:#9aaa8a;line-height:1.6;
 }
 
@@ -301,6 +313,14 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
     </div>
   </div>
 
+  <button class="test-sound-btn" id="testSoundBtn" onclick="testSound()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+      <path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/>
+    </svg>
+    Test Sound
+  </button>
+
   <p class="disclaimer">Yodha can make mistakes. Always double-check important information.</p>
 </div>
 
@@ -368,6 +388,7 @@ function doLogin() {
   if (email === VALID_EMAIL && pass === VALID_PASS) {
     try { localStorage.setItem('yodha_auth', '1'); } catch(e) {}
     err.textContent = '';
+    unlockAudio();
     showScreen('home');
     warmup();
   } else {
@@ -376,14 +397,11 @@ function doLogin() {
   }
 }
 
-// Allow Enter key on login form
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && document.getElementById('login').classList.contains('active')) {
-    doLogin();
-  }
+  if (e.key === 'Enter' && document.getElementById('login').classList.contains('active')) doLogin();
 });
 
-// ── Init: decide first screen ──
+// ── Init ──
 (function init() {
   let loggedIn = false;
   try { loggedIn = localStorage.getItem('yodha_auth') === '1'; } catch(e) {}
@@ -428,7 +446,45 @@ function setRating(val) {
   });
 }
 
-// ── Warmup ping – wakes container from cold start ──
+// ── Audio unlock – required for iOS autoplay ──
+function unlockAudio() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    setTimeout(() => ctx.close(), 500);
+  } catch(e) {}
+}
+
+// ── Test Sound ──
+async function testSound() {
+  const btn = document.getElementById('testSoundBtn');
+  btn.classList.add('testing');
+  btn.textContent = 'Loading...';
+  try {
+    unlockAudio();
+    const resp = await fetch(`${API}/speak`, { signal: AbortSignal.timeout(20000) });
+    if (!resp.ok) throw new Error(`${resp.status}`);
+    const data = await resp.json();
+    await playAudio(data.audio_base64);
+    btn.textContent = '✓ Sound works!';
+    setTimeout(() => {
+      btn.classList.remove('testing');
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/></svg> Test Sound`;
+    }, 2000);
+  } catch(e) {
+    btn.textContent = `Error: ${e.message}`;
+    btn.classList.remove('testing');
+    setTimeout(() => {
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/></svg> Test Sound`;
+    }, 3000);
+  }
+}
+
+// ── Warmup ping ──
 async function warmup() {
   try {
     const resp = await fetch(`${API}/`, { signal: AbortSignal.timeout(15000) });
@@ -449,12 +505,15 @@ function showScreen(id) {
 }
 
 function startCall() {
+  // Reset state for every new call session
+  userStopped = false;
+  hasSpoken = false;
+  history = [];
+  unlockAudio();
   showScreen('call');
   callSeconds = 0;
   updateTimer();
   timerInterval = setInterval(() => { callSeconds++; updateTimer(); }, 1000);
-  // Unlock audio on iOS with a silent play
-  sharedAudio.play().catch(() => {});
   start();
 }
 
@@ -541,8 +600,8 @@ async function start() {
     source.connect(analyser);
     const freqData = new Uint8Array(analyser.frequencyBinCount);
 
-    const SPEECH_THRESHOLD = 25;
-    const SILENCE_HOLD_MS = 1400;
+    const SPEECH_THRESHOLD = 12;   // lowered from 25 — catches more mic types
+    const SILENCE_HOLD_MS  = 1200; // slightly faster response
     const NO_SPEECH_TIMEOUT_MS = 10000;
 
     noSpeechTimer = setTimeout(() => {
@@ -561,8 +620,9 @@ async function start() {
       monitorRAF = requestAnimationFrame(monitor);
     }
     monitor();
-  } catch {
+  } catch(e) {
     setStatus('Microphone permission required');
+    console.error('mic error:', e);
   }
 }
 
@@ -629,10 +689,9 @@ async function process() {
     if (active && !userStopped) setTimeout(() => start(), 300);
   } catch(e) {
     console.error('converse error:', e);
-    setStatus('Error — try again');
+    setStatus(`Error: ${e.message.slice(0, 60)}`);
     setOrbState('idle');
     active = false;
-    // Auto-recover after 2s
     setTimeout(() => {
       if (!userStopped) { active = true; start(); }
     }, 2000);
@@ -656,17 +715,21 @@ function playAudio(b64) {
         setStatus('Ready to talk');
         res();
       };
-      sharedAudio.onerror = () => {
+      sharedAudio.onerror = (ev) => {
+        console.error('audio error:', ev);
+        URL.revokeObjectURL(url);
         setOrbState('idle');
         setStatus('Ready to talk');
         res();
       };
-      sharedAudio.play().catch(() => {
+      sharedAudio.play().catch(err => {
+        console.error('play() blocked:', err);
         setOrbState('idle');
-        setStatus('Ready to talk');
+        setStatus('Tap screen to enable audio');
         res();
       });
-    } catch {
+    } catch(err) {
+      console.error('playAudio error:', err);
       setOrbState('idle');
       setStatus('Ready to talk');
       res();

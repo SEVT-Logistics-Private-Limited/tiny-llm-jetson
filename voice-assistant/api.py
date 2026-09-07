@@ -161,26 +161,38 @@ def telugu_llm(messages):
     )
     return clean_for_tts(response.text)
 
+# Telugu speakers valid for bulbul:v1 — try in order until one works
+TTS_SPEAKERS = ["meera", "pavithra", "anushka"]
+
 def do_tts(text):
     """Sarvam TTS - native Telugu voice, returns WAV bytes."""
     text = text[:500]
     headers = {"api-subscription-key": SARVAM_KEY, "Content-Type": "application/json"}
-    payload = {
-        "inputs": [text],
-        "target_language_code": "te-IN",
-        "speaker": "anushka",
-        "pitch": 0,
-        "pace": 1.05,
-        "loudness": 1.5,
-        "speech_sample_rate": 22050,
-        "enable_preprocessing": True,
-        "model": "bulbul:v1"
-    }
-    r = requests.post("https://api.sarvam.ai/text-to-speech", json=payload, headers=headers, timeout=20)
-    r.raise_for_status()
-    return base64.b64decode(r.json()["audios"][0])
+    last_err = None
+    for speaker in TTS_SPEAKERS:
+        payload = {
+            "inputs": [text],
+            "target_language_code": "te-IN",
+            "speaker": speaker,
+            "pitch": 0,
+            "pace": 1.05,
+            "loudness": 1.5,
+            "speech_sample_rate": 22050,
+            "enable_preprocessing": True,
+            "model": "bulbul:v1"
+        }
+        try:
+            r = requests.post("https://api.sarvam.ai/text-to-speech", json=payload, headers=headers, timeout=20)
+            if r.status_code == 200:
+                return base64.b64decode(r.json()["audios"][0])
+            print(f"Sarvam TTS speaker={speaker} failed: {r.status_code} {r.text[:200]}")
+            last_err = RuntimeError(f"Sarvam TTS {r.status_code}: {r.text[:200]}")
+        except Exception as e:
+            print(f"Sarvam TTS speaker={speaker} exception: {e}")
+            last_err = e
+    raise last_err
 
-app = FastAPI(title="Telugu Voice AI", version="6.0")
+app = FastAPI(title="Telugu Voice AI", version="7.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class Msg(BaseModel):
@@ -200,11 +212,21 @@ class AudioReq(BaseModel):
 @app.get("/")
 def health():
     ctx = get_context()
-    return {"status": "running", "version": "6.0", "time": ctx['time'], "date": ctx['date']}
+    return {"status": "running", "version": "7.0", "time": ctx['time'], "date": ctx['date']}
 
 @app.get("/assistant")
 def assistant():
     return FileResponse("/home/azureuser/telugu_assistant.html")
+
+@app.get("/speak")
+def speak():
+    """Test TTS endpoint — plays a greeting without needing STT."""
+    try:
+        audio = do_tts("నమస్కారం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?")
+        return {"audio_base64": base64.b64encode(audio).decode()}
+    except Exception as e:
+        print(f"ERROR in /speak: {traceback.format_exc()}")
+        raise HTTPException(500, str(e))
 
 @app.post("/tts")
 def tts(req: TextReq):
