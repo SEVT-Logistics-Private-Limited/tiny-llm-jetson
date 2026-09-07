@@ -8,16 +8,68 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;background:#eceae4;color:#2d3a1e}
+html,body{height:100%;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;background:#ffffff;color:#2d3a1e}
 body{display:flex;align-items:center;justify-content:center;min-height:100%}
 
 .screen{
   display:none;width:100%;max-width:480px;min-height:100dvh;
   flex-direction:column;align-items:center;
-  background:#eceae4;
+  background:#ffffff;
   padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);
 }
 .screen.active{display:flex}
+
+/* ── LOGIN ── */
+#login{justify-content:center;padding-left:28px;padding-right:28px;gap:0}
+
+.login-logo{
+  width:64px;height:64px;border-radius:18px;background:#8aaa6a;
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:24px;
+}
+.login-logo svg{width:32px;height:32px;color:#fff}
+
+.login-title{
+  font-size:28px;font-weight:600;color:#2d3a1e;letter-spacing:-.5px;
+  margin-bottom:6px;text-align:center;
+}
+.login-sub{
+  font-size:14px;color:#7a8c6a;margin-bottom:36px;text-align:center;
+}
+
+.login-form{width:100%;display:flex;flex-direction:column;gap:14px}
+
+.input-wrap{
+  display:flex;flex-direction:column;gap:6px;
+}
+.input-wrap label{
+  font-size:12px;font-weight:500;color:#5a6e4a;letter-spacing:.3px;text-transform:uppercase;
+}
+.input-wrap input{
+  width:100%;padding:15px 16px;
+  border:1.5px solid #e0ddd6;border-radius:12px;
+  font-family:inherit;font-size:15px;color:#2d3a1e;
+  background:#fafafa;outline:none;
+  transition:border-color .15s,background .15s;
+}
+.input-wrap input:focus{border-color:#8aaa6a;background:#fff}
+.input-wrap input::placeholder{color:#b0b8a4}
+
+.login-error{
+  font-size:13px;color:#c0392b;text-align:center;
+  min-height:18px;margin-top:-4px;
+}
+
+.login-btn{
+  width:100%;margin-top:8px;
+  padding:18px 24px;
+  background:#8aaa6a;border:none;border-radius:14px;
+  color:#fff;font-size:16px;font-weight:500;
+  cursor:pointer;
+  transition:background .15s,transform .15s;
+}
+.login-btn:hover{background:#7a9c5a}
+.login-btn:active{transform:scale(.98)}
 
 /* ── HOME ── */
 #home{justify-content:flex-start;padding-left:28px;padding-right:28px}
@@ -148,21 +200,21 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
   padding-top:16px;
 }
 .controls-panel{
-  background:#d4d0c6;border-radius:18px;padding:6px;
+  background:#eeeeee;border-radius:18px;padding:6px;
   display:grid;grid-template-columns:1fr 1fr;gap:6px;
 }
 .ctrl-btn{
   padding:18px 12px;border-radius:12px;
   display:flex;align-items:center;justify-content:center;gap:10px;
   font-size:15px;font-weight:500;color:#2d3a1e;
-  cursor:pointer;background:#e8e4da;border:none;
+  cursor:pointer;background:#f7f7f7;border:none;
   transition:background .15s;
 }
-.ctrl-btn:hover{background:#ddd8cc}
-.ctrl-btn:active{background:#ccc8be;transform:scale(.97)}
+.ctrl-btn:hover{background:#ebebeb}
+.ctrl-btn:active{background:#e0e0e0;transform:scale(.97)}
 .ctrl-btn.muted{background:#c8d4b4;color:#4a6030}
-.ctrl-btn.end-btn{color:#c0392b;background:#f0dcd8}
-.ctrl-btn.end-btn:hover{background:#e8cdc8}
+.ctrl-btn.end-btn{color:#c0392b;background:#f9eded}
+.ctrl-btn.end-btn:hover{background:#f2e0e0}
 .ctrl-btn svg{width:18px;height:18px}
 
 /* ── POST-CALL ── */
@@ -206,8 +258,32 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
 </head>
 <body>
 
+<!-- LOGIN -->
+<div class="screen" id="login">
+  <div class="login-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8a19.79 19.79 0 01-3.07-8.68A2 2 0 012 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
+    </svg>
+  </div>
+  <div class="login-title">Welcome to Yodha</div>
+  <div class="login-sub">Sign in to continue</div>
+
+  <div class="login-form">
+    <div class="input-wrap">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="Enter your email" autocomplete="email">
+    </div>
+    <div class="input-wrap">
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password">
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+  </div>
+</div>
+
 <!-- HOME -->
-<div class="screen active" id="home">
+<div class="screen" id="home">
   <div class="home-greeting" id="greeting">Good evening</div>
   <div class="home-title">Your Telugu<br>voice assistant</div>
 
@@ -281,6 +357,40 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
 <script>
 const API = "https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontainerapps.io";
 
+// ── Auth ──
+const VALID_EMAIL = "yodhakit@gmail.com";
+const VALID_PASS  = "Yodhakit";
+
+function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const pass  = document.getElementById('loginPassword').value;
+  const err   = document.getElementById('loginError');
+  if (email === VALID_EMAIL && pass === VALID_PASS) {
+    try { localStorage.setItem('yodha_auth', '1'); } catch(e) {}
+    err.textContent = '';
+    showScreen('home');
+    warmup();
+  } else {
+    err.textContent = 'Incorrect email or password. Please try again.';
+    document.getElementById('loginPassword').value = '';
+  }
+}
+
+// Allow Enter key on login form
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('login').classList.contains('active')) {
+    doLogin();
+  }
+});
+
+// ── Init: decide first screen ──
+(function init() {
+  let loggedIn = false;
+  try { loggedIn = localStorage.getItem('yodha_auth') === '1'; } catch(e) {}
+  showScreen(loggedIn ? 'home' : 'login');
+  if (loggedIn) warmup();
+})();
+
 let sharedAudio = new Audio();
 sharedAudio.playsInline = true;
 
@@ -331,7 +441,6 @@ async function warmup() {
     document.getElementById('warmupLabel').textContent = 'Tap to connect';
   }
 }
-warmup();
 
 // ── Navigation ──
 function showScreen(id) {
@@ -344,6 +453,7 @@ function startCall() {
   callSeconds = 0;
   updateTimer();
   timerInterval = setInterval(() => { callSeconds++; updateTimer(); }, 1000);
+  // Unlock audio on iOS with a silent play
   sharedAudio.play().catch(() => {});
   start();
 }
@@ -522,6 +632,7 @@ async function process() {
     setStatus('Error — try again');
     setOrbState('idle');
     active = false;
+    // Auto-recover after 2s
     setTimeout(() => {
       if (!userStopped) { active = true; start(); }
     }, 2000);
