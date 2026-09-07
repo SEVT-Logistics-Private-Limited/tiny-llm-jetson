@@ -19,9 +19,16 @@ from sentence_transformers import SentenceTransformer
 import chromadb
 
 print("Loading manual knowledge base...")
-_embed_model = SentenceTransformer("intfloat/multilingual-e5-small")
-_chroma_client = chromadb.PersistentClient(path="/home/azureuser/vehicle_manuals_db")
-_manuals_collection = _chroma_client.get_collection("vehicle_manuals")
+try:
+    _embed_model = SentenceTransformer("intfloat/multilingual-e5-small")
+    _chroma_client = chromadb.PersistentClient(path="/home/azureuser/vehicle_manuals_db")
+    _manuals_collection = _chroma_client.get_collection("vehicle_manuals")
+    print("Vehicle manuals DB loaded successfully.")
+except Exception as e:
+    print(f"Warning: Could not load vehicle manuals DB: {e}. RAG disabled.")
+    _embed_model = None
+    _chroma_client = None
+    _manuals_collection = None
 
 def sarvam_translate(text, source_lang, target_lang):
     headers = {"api-subscription-key": SARVAM_KEY, "Content-Type": "application/json"}
@@ -31,6 +38,8 @@ def sarvam_translate(text, source_lang, target_lang):
     return r.json()["translated_text"]
 
 def retrieve_manual_context(question_te, distance_threshold=0.35):
+    if _manuals_collection is None:
+        return None
     try:
         question_en = sarvam_translate(question_te, "te-IN", "en-IN")
         query_emb = _embed_model.encode(["query: " + question_en]).tolist()
