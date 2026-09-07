@@ -21,7 +21,7 @@ import chromadb
 print("Loading manual knowledge base...")
 try:
     _embed_model = SentenceTransformer("intfloat/multilingual-e5-small")
-    _chroma_client = chromadb.PersistentClient(path="/home/azureuser/vehicle_manuals_db")
+    _chroma_client = chromadb.PersistentClient(path="/mnt/vehicledata")
     _manuals_collection = _chroma_client.get_collection("vehicle_manuals")
     print("Vehicle manuals DB loaded successfully.")
 except Exception as e:
@@ -124,10 +124,10 @@ def build_system(ctx, manual_context=None):
         )
     base += (
         "నియమాలు:\n"
-        "1. ఎల్లప్పుడూ తెలుగులో మాత్రమే మాట్లాడు\n"
+        "1. ఎల్లప్పుడూ తెలుగుల౏ మాత్రమే మాట్లాడు\n"
         "2. ఇంగ్లీష్ పదాలు వాడకు\n"
         "3. *, /, #, _ లాంటి గుర్తులు వాడకు\n"
-        "4. జవాబు 1-2 వాక్యాలలో ఇవ్వు\n"
+        "4. జవాబు 1-2 వాక్యాలల౏ ఇవ్వు\n"
         "5. స్నేహంగా మాట్లాడు"
     )
     return base
