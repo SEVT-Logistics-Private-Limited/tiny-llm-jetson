@@ -53,6 +53,16 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
 .card-name{font-size:28px;font-weight:600;color:#fff;letter-spacing:-.4px}
 .card-hint{font-size:14px;font-weight:400;color:rgba(255,255,255,.75)}
 
+.warmup-badge{
+  font-size:12px;color:rgba(255,255,255,.55);
+  display:flex;align-items:center;gap:6px;
+}
+.warmup-dot{
+  width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.4);
+  transition:background .3s;
+}
+.warmup-dot.ready{background:#b8ff80}
+
 .disclaimer{
   width:100%;margin-top:20px;
   font-size:12px;color:#9aaa8a;line-height:1.6;
@@ -175,8 +185,9 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
 .star{
   width:44px;height:44px;cursor:pointer;
   display:flex;align-items:center;justify-content:center;
+  background:none;border:none;
 }
-.star svg{width:36px;height:36px;transition:transform .15px}
+.star svg{width:36px;height:36px;transition:transform .15s}
 .star:hover svg{transform:scale(1.15)}
 .star svg .star-path{fill:rgba(74,96,48,.25);stroke:rgba(74,96,48,.4);stroke-width:1.5}
 .star.filled svg .star-path{fill:#4a6030;stroke:#4a6030}
@@ -208,6 +219,10 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
     </div>
     <div class="card-name">Yodha</div>
     <div class="card-hint">Tap to start talking</div>
+    <div class="warmup-badge">
+      <div class="warmup-dot" id="warmupDot"></div>
+      <span id="warmupLabel">Connecting...</span>
+    </div>
   </div>
 
   <p class="disclaimer">Yodha can make mistakes. Always double-check important information.</p>
@@ -265,6 +280,7 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
 
 <script>
 const API = "https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontainerapps.io";
+
 let sharedAudio = new Audio();
 sharedAudio.playsInline = true;
 
@@ -273,13 +289,16 @@ let audioCtx = null, analyser = null, silenceTimer = null, noSpeechTimer = null,
 let hasSpoken = false, endedByTimeout = false, userStopped = false;
 let timerInterval = null, callSeconds = 0;
 let starRating = 0;
+let apiReady = false;
 
+// ── Greeting ──
 (function setGreeting() {
   const h = new Date().getHours();
   const label = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 21 ? 'Good evening' : 'Good night';
   document.getElementById('greeting').textContent = label;
 })();
 
+// ── Stars ──
 (function buildStars() {
   const container = document.getElementById('stars');
   for (let i = 1; i <= 5; i++) {
@@ -299,6 +318,22 @@ function setRating(val) {
   });
 }
 
+// ── Warmup ping – wakes container from cold start ──
+async function warmup() {
+  try {
+    const resp = await fetch(`${API}/`, { signal: AbortSignal.timeout(15000) });
+    if (resp.ok) {
+      apiReady = true;
+      document.getElementById('warmupDot').classList.add('ready');
+      document.getElementById('warmupLabel').textContent = 'Ready';
+    }
+  } catch {
+    document.getElementById('warmupLabel').textContent = 'Tap to connect';
+  }
+}
+warmup();
+
+// ── Navigation ──
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -355,21 +390,21 @@ function toggleMute() {
 }
 
 function setOrbState(state) {
-  const orb = document.getElementById('orb');
-  orb.className = 'orb ' + (state || 'idle');
+  document.getElementById('orb').className = 'orb ' + (state || 'idle');
 }
 
 function setStatus(txt) {
   document.getElementById('statusLabel').textContent = txt || 'Ready to talk';
 }
 
+// ── Record + VAD ──
 async function start() {
+  if (userStopped) return;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     chunks = [];
     hasSpoken = false;
     endedByTimeout = false;
-    userStopped = false;
     rec = new MediaRecorder(stream);
     rec.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
     rec.onstop = () => {
@@ -397,7 +432,7 @@ async function start() {
     const freqData = new Uint8Array(analyser.frequencyBinCount);
 
     const SPEECH_THRESHOLD = 25;
-    const SILENCE_HOLD_MS = 1500;
+    const SILENCE_HOLD_MS = 1400;
     const NO_SPEECH_TIMEOUT_MS = 10000;
 
     noSpeechTimer = setTimeout(() => {
@@ -429,6 +464,34 @@ function cleanupMonitor() {
   analyser = null;
 }
 
+// ── Call API with one retry ──
+async function callConverse(b64) {
+  const body = JSON.stringify({ audio_base64: b64, history });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const resp = await fetch(`${API}/converse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: AbortSignal.timeout(30000)
+      });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        throw new Error(`${resp.status}: ${errText.slice(0, 120)}`);
+      }
+      return await resp.json();
+    } catch(e) {
+      if (attempt === 0) {
+        setStatus('Reconnecting...');
+        await new Promise(r => setTimeout(r, 1500));
+      } else {
+        throw e;
+      }
+    }
+  }
+}
+
+// ── Process recorded audio ──
 async function process() {
   if (!chunks.length) { setOrbState('idle'); setStatus('Ready to talk'); return; }
   setOrbState('thinking');
@@ -442,12 +505,7 @@ async function process() {
   });
 
   try {
-    const resp = await fetch(`${API}/converse`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audio_base64: b64, history })
-    });
-    const data = await resp.json();
+    const data = await callConverse(b64);
     if (data.transcript) {
       document.getElementById('transcriptPeek').textContent = data.transcript;
     }
@@ -458,31 +516,50 @@ async function process() {
       setOrbState('idle');
       setStatus('Ready to talk');
     }
-    if (active && !userStopped) setTimeout(() => start(), 400);
-  } catch {
-    setStatus('Error — please try again');
+    if (active && !userStopped) setTimeout(() => start(), 300);
+  } catch(e) {
+    console.error('converse error:', e);
+    setStatus('Error — try again');
     setOrbState('idle');
     active = false;
+    setTimeout(() => {
+      if (!userStopped) { active = true; start(); }
+    }, 2000);
   }
 }
 
+// ── Play WAV audio ──
 function playAudio(b64) {
   return new Promise(res => {
     setOrbState('speaking');
     setStatus('Speaking...');
-    const bytes = atob(b64);
-    const buf = new Uint8Array(bytes.length);
-    for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
-    const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-    sharedAudio.src = url;
-    sharedAudio.onended = () => {
-      URL.revokeObjectURL(url);
+    try {
+      const bytes = atob(b64);
+      const buf = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+      sharedAudio.src = url;
+      sharedAudio.onended = () => {
+        URL.revokeObjectURL(url);
+        setOrbState('idle');
+        setStatus('Ready to talk');
+        res();
+      };
+      sharedAudio.onerror = () => {
+        setOrbState('idle');
+        setStatus('Ready to talk');
+        res();
+      };
+      sharedAudio.play().catch(() => {
+        setOrbState('idle');
+        setStatus('Ready to talk');
+        res();
+      });
+    } catch {
       setOrbState('idle');
       setStatus('Ready to talk');
       res();
-    };
-    sharedAudio.onerror = () => res();
-    sharedAudio.play().catch(() => res());
+    }
   });
 }
 </script>
