@@ -1,0 +1,38 @@
+name: Build & Deploy to Azure Container Apps
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Build image directly on ACR (no Docker daemon needed locally)
+      - name: Build & push image via ACR
+        run: |
+          az acr build \
+            --registry ${{ secrets.ACR_NAME }} \
+            --image telugu-voice-ai:${{ github.sha }} \
+            --image telugu-voice-ai:latest \
+            --file voice-assistant/Dockerfile \
+            .
+
+      # Update the Container App to use the new image
+      - name: Deploy to Container App
+        run: |
+          az containerapp update \
+            --name ${{ secrets.CONTAINER_APP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_NAME }}.azurecr.io/telugu-voice-ai:${{ github.sha }}
