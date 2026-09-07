@@ -1,4 +1,4 @@
-import base64, sarvamai, requests, tempfile, subprocess, os, re, io, wave
+import base64, sarvamai, requests, tempfile, subprocess, os, re, io, wave, traceback
 from google import genai as google_genai
 from google.genai import types as genai_types
 from fastapi import FastAPI, HTTPException
@@ -90,12 +90,21 @@ def convert_to_wav(audio_bytes):
         f.write(audio_bytes)
         webm_path = f.name
     wav_path = webm_path.replace('.webm', '.wav')
-    subprocess.run(['/usr/bin/ffmpeg', '-y', '-i', webm_path,
-        '-ar', '16000', '-ac', '1', '-f', 'wav', wav_path], capture_output=True)
-    with open(wav_path, 'rb') as f:
-        wav_bytes = f.read()
-    os.unlink(webm_path)
-    os.unlink(wav_path)
+    try:
+        result = subprocess.run(
+            ['/usr/bin/ffmpeg', '-y', '-i', webm_path,
+             '-ar', '16000', '-ac', '1', '-f', 'wav', wav_path],
+            capture_output=True
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"ffmpeg error: {result.stderr.decode()}")
+        with open(wav_path, 'rb') as f:
+            wav_bytes = f.read()
+    finally:
+        if os.path.exists(webm_path):
+            os.unlink(webm_path)
+        if os.path.exists(wav_path):
+            os.unlink(wav_path)
     return wav_bytes
 
 def clean_for_tts(text):
@@ -112,7 +121,7 @@ def clean_for_tts(text):
 
 def build_system(ctx, manual_context=None):
     base = (
-        "నువ్వు యోధ అనే తెలుగు AI అసిస్టెంట్‌వి.\n"
+        "నువ్వు యోధ అనే తెలుగు AI అసిస్టెంట్‌వి. నువ్వు చాలా స్నేహంగా, వేడుకగా మాట్లాడతావు - ఒక మంచి స్నేహితుడిలా.\n"
         f"సమయం: {ctx['time']} IST, తేదీ: {ctx['date']}, వారం: {ctx['day']}\n"
         "భారత రాజధాని న్యూఢిల్లీ, తెలంగాణ రాజధాని హైదరాబాద్, ఆంధ్రప్రదేశ్ రాజధాని అమరావతి.\n"
     )
@@ -123,12 +132,13 @@ def build_system(ctx, manual_context=None):
             "పై సమాచారం ఆధారంగా వినియోగదారు ప్రశ్నకు సమాధానం ఇవ్వు.\n"
         )
     base += (
-        "నియమాలు:\n"
-        "1. ఎల్లప్పుడూ తెలుగుల౏ మాత్రమే మాట్లాడు\n"
+        "\nనియమాలు:\n"
+        "1. ఎల్లప్పుడూ శుద్ధ తెలుగులో మాత్రమే మాట్లాడు\n"
         "2. ఇంగ్లీష్ పదాలు వాడకు\n"
         "3. *, /, #, _ లాంటి గుర్తులు వాడకు\n"
-        "4. జవాబు 1-2 వాక్యాలల౏ ఇవ్వు\n"
-        "5. స్నేహంగా మాట్లాడు"
+        "4. జవాబు చాలా చిన్నగా ఉండాలి - 1-2 వాక్యాలు మాత్రమే\n"
+        "5. స్నేహంగా, వేడుకగా, సహజంగా మాట్లాడు - ఒక స్నేహితుడిలా\n"
+        "6. సంక్షిప్తంగా, స్పష్టంగా చెప్పు"
     )
     return base
 
@@ -146,39 +156,31 @@ def telugu_llm(messages):
         contents=contents,
         config=genai_types.GenerateContentConfig(
             system_instruction=system_msg,
-            max_output_tokens=1200
+            max_output_tokens=200
         )
     )
     return clean_for_tts(response.text)
 
-def _pcm_to_wav(pcm_data, rate=24000):
-    buf = io.BytesIO()
-    with wave.open(buf, 'wb') as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(rate)
-        w.writeframes(pcm_data)
-    return buf.getvalue()
-
 def do_tts(text):
-    response = gemini_client.models.generate_content(
-        model="gemini-2.0-flash-preview-tts",
-        contents=text,
-        config=genai_types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=genai_types.SpeechConfig(
-                voice_config=genai_types.VoiceConfig(
-                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                        voice_name="Aoede"
-                    )
-                )
-            )
-        )
-    )
-    pcm_data = response.candidates[0].content.parts[0].inline_data.data
-    return _pcm_to_wav(pcm_data)
+    """Sarvam TTS - native Telugu voice, returns WAV bytes."""
+    text = text[:500]
+    headers = {"api-subscription-key": SARVAM_KEY, "Content-Type": "application/json"}
+    payload = {
+        "inputs": [text],
+        "target_language_code": "te-IN",
+        "speaker": "anushka",
+        "pitch": 0,
+        "pace": 1.05,
+        "loudness": 1.5,
+        "speech_sample_rate": 22050,
+        "enable_preprocessing": True,
+        "model": "bulbul:v1"
+    }
+    r = requests.post("https://api.sarvam.ai/text-to-speech", json=payload, headers=headers, timeout=20)
+    r.raise_for_status()
+    return base64.b64decode(r.json()["audios"][0])
 
-app = FastAPI(title="Telugu Voice AI", version="5.0")
+app = FastAPI(title="Telugu Voice AI", version="6.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class Msg(BaseModel):
@@ -198,7 +200,7 @@ class AudioReq(BaseModel):
 @app.get("/")
 def health():
     ctx = get_context()
-    return {"status": "running", "version": "5.0", "time": ctx['time'], "date": ctx['date']}
+    return {"status": "running", "version": "6.0", "time": ctx['time'], "date": ctx['date']}
 
 @app.get("/assistant")
 def assistant():
@@ -210,6 +212,7 @@ def tts(req: TextReq):
         audio = do_tts(req.text)
         return {"audio_base64": base64.b64encode(audio).decode()}
     except Exception as e:
+        print(f"ERROR in /tts: {traceback.format_exc()}")
         raise HTTPException(500, str(e))
 
 @app.post("/converse")
@@ -245,6 +248,7 @@ def converse(req: ConvReq):
     except HTTPException:
         raise
     except Exception as e:
+        print(f"ERROR in /converse: {traceback.format_exc()}")
         raise HTTPException(500, str(e))
 
 @app.post("/voice")
@@ -270,4 +274,5 @@ def voice(req: AudioReq):
         return {"transcript": text, "response": response,
                 "audio_base64": base64.b64encode(audio).decode()}
     except Exception as e:
+        print(f"ERROR in /voice: {traceback.format_exc()}")
         raise HTTPException(500, str(e))
