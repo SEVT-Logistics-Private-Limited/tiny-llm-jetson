@@ -1,8 +1,5 @@
 FROM python:3.11-slim
 
-# System deps: ffmpeg for audio conversion
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
-
 # Create the path api.py expects for the HTML file
 RUN mkdir -p /home/azureuser
 

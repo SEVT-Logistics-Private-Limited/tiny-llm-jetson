@@ -1,4 +1,4 @@
-import base64, sarvamai, requests, tempfile, subprocess, os, re, io, wave, traceback
+import base64, requests, os, re, io, wave, traceback
 from google import genai as google_genai
 from google.genai import types as genai_types
 from fastapi import FastAPI, HTTPException
@@ -9,10 +9,8 @@ from typing import List, Optional
 from datetime import datetime
 import pytz
 
-SARVAM_KEY = os.environ["SARVAM_API_KEY"]
 GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 
-sarvam_client = sarvamai.SarvamAI(api_subscription_key=SARVAM_KEY)
 gemini_client = google_genai.Client(api_key=GEMINI_KEY)
 
 from sentence_transformers import SentenceTransformer
@@ -30,18 +28,20 @@ except Exception as e:
     _chroma_client = None
     _manuals_collection = None
 
-def sarvam_translate(text, source_lang, target_lang):
-    headers = {"api-subscription-key": SARVAM_KEY, "Content-Type": "application/json"}
-    payload = {"input": text, "source_language_code": source_lang, "target_language_code": target_lang}
-    r = requests.post("https://api.sarvam.ai/translate", json=payload, headers=headers, timeout=15)
-    r.raise_for_status()
-    return r.json()["translated_text"]
+def gemini_translate(text, source_lang, target_lang):
+    prompt = f"Translate the following text from {source_lang} to {target_lang}. Return only the translated text, no explanations.\n\nText: {text}"
+    response = gemini_client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt,
+        config=genai_types.GenerateContentConfig(max_output_tokens=500)
+    )
+    return response.text.strip()
 
 def retrieve_manual_context(question_te, distance_threshold=0.35):
     if _manuals_collection is None:
         return None
     try:
-        question_en = sarvam_translate(question_te, "te-IN", "en-IN")
+        question_en = gemini_translate(question_te, "Telugu", "English")
         query_emb = _embed_model.encode(["query: " + question_en]).tolist()
         results = _manuals_collection.query(query_embeddings=query_emb, n_results=1)
         if not results["documents"][0]:
@@ -86,7 +86,7 @@ def check_instant(text, ctx):
     return None
 
 def gemini_stt(audio_bytes):
-    """Transcribe Telugu audio using Gemini — no Sarvam dependency."""
+    """Transcribe Telugu audio using Gemini."""
     response = gemini_client.models.generate_content(
         model="gemini-2.0-flash",
         contents=[
@@ -170,7 +170,7 @@ def _pcm_to_wav(pcm_data, rate=24000):
     return buf.getvalue()
 
 def do_tts(text):
-    """Gemini TTS — returns WAV bytes. Same approach as the reference telugu_voice_api.py."""
+    """Gemini TTS — returns WAV bytes."""
     text = text[:500]
     response = gemini_client.models.generate_content(
         model="gemini-2.0-flash-preview-tts",
@@ -189,7 +189,7 @@ def do_tts(text):
     pcm_data = response.candidates[0].content.parts[0].inline_data.data
     return _pcm_to_wav(pcm_data)
 
-app = FastAPI(title="Telugu Voice AI", version="7.0")
+app = FastAPI(title="Telugu Voice AI", version="8.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class Msg(BaseModel):
@@ -209,7 +209,7 @@ class AudioReq(BaseModel):
 @app.get("/")
 def health():
     ctx = get_context()
-    return {"status": "running", "version": "7.0", "time": ctx['time'], "date": ctx['date']}
+    return {"status": "running", "version": "8.0", "time": ctx['time'], "date": ctx['date']}
 
 @app.get("/assistant")
 def assistant():
