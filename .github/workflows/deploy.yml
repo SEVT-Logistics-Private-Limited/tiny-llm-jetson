@@ -36,5 +36,6 @@ jobs:
             --name ${{ secrets.CONTAINER_APP_NAME }} \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
             --image ${{ secrets.ACR_NAME }}.azurecr.io/telugu-voice-ai:${{ github.sha }} \
+            --min-replicas 1 \
             --set-env-vars \
               GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}

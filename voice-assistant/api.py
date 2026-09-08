@@ -13,8 +13,6 @@ GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 
 gemini_client = google_genai.Client(api_key=GEMINI_KEY)
 
-from sentence_transformers import SentenceTransformer
-import chromadb
 import threading
 
 _embed_model = None
@@ -25,6 +23,8 @@ def _load_kb():
     global _embed_model, _chroma_client, _manuals_collection
     print("Loading manual knowledge base in background...")
     try:
+        from sentence_transformers import SentenceTransformer
+        import chromadb
         em = SentenceTransformer("intfloat/multilingual-e5-small")
         cc = chromadb.PersistentClient(path="/mnt/vehicledata")
         mc = cc.get_collection("vehicle_manuals")
@@ -183,7 +183,7 @@ def do_tts(text):
     """Gemini TTS — returns WAV bytes."""
     text = text[:500]
     response = gemini_client.models.generate_content(
-        model="gemini-3.6-flash-preview-tts",
+        model="gemini-2.0-flash-preview-tts",
         contents=text,
         config=genai_types.GenerateContentConfig(
             response_modalities=["AUDIO"],
