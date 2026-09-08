@@ -161,36 +161,35 @@ def telugu_llm(messages):
     )
     return clean_for_tts(response.text)
 
-# Telugu speakers valid for bulbul:v1 — try in order until one works
-TTS_SPEAKERS = ["meera", "pavithra", "anushka"]
+def _pcm_to_wav(pcm_data, rate=24000):
+    """Convert raw PCM (16-bit signed LE, mono) to WAV bytes."""
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm_data)
+    return buf.getvalue()
 
 def do_tts(text):
-    """Sarvam TTS - native Telugu voice, returns WAV bytes."""
+    """Gemini TTS — returns WAV bytes. Same approach as the reference telugu_voice_api.py."""
     text = text[:500]
-    headers = {"api-subscription-key": SARVAM_KEY, "Content-Type": "application/json"}
-    last_err = None
-    for speaker in TTS_SPEAKERS:
-        payload = {
-            "inputs": [text],
-            "target_language_code": "te-IN",
-            "speaker": speaker,
-            "pitch": 0,
-            "pace": 1.05,
-            "loudness": 1.5,
-            "speech_sample_rate": 22050,
-            "enable_preprocessing": True,
-            "model": "bulbul:v1"
-        }
-        try:
-            r = requests.post("https://api.sarvam.ai/text-to-speech", json=payload, headers=headers, timeout=20)
-            if r.status_code == 200:
-                return base64.b64decode(r.json()["audios"][0])
-            print(f"Sarvam TTS speaker={speaker} failed: {r.status_code} {r.text[:200]}")
-            last_err = RuntimeError(f"Sarvam TTS {r.status_code}: {r.text[:200]}")
-        except Exception as e:
-            print(f"Sarvam TTS speaker={speaker} exception: {e}")
-            last_err = e
-    raise last_err
+    response = gemini_client.models.generate_content(
+        model="gemini-2.0-flash-preview-tts",
+        contents=text,
+        config=genai_types.GenerateContentConfig(
+            response_modalities=["AUDIO"],
+            speech_config=genai_types.SpeechConfig(
+                voice_config=genai_types.VoiceConfig(
+                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                        voice_name="Aoede"
+                    )
+                )
+            )
+        )
+    )
+    pcm_data = response.candidates[0].content.parts[0].inline_data.data
+    return _pcm_to_wav(pcm_data)
 
 app = FastAPI(title="Telugu Voice AI", version="7.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
