@@ -37,6 +37,7 @@ def _load_kb():
 
 threading.Thread(target=_load_kb, daemon=True).start()
 
+
 def gemini_translate(text, source_lang, target_lang):
     prompt = f"Translate the following text from {source_lang} to {target_lang}. Return only the translated text, no explanations.\n\nText: {text}"
     response = gemini_client.models.generate_content(
