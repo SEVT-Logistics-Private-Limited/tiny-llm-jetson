@@ -162,6 +162,7 @@ def telugu_llm(messages):
     return clean_for_tts(response.text)
 
 def _pcm_to_wav(pcm_data, rate=24000):
+    """Convert raw PCM (16-bit signed LE, mono) to WAV bytes."""
     buf = io.BytesIO()
     with wave.open(buf, 'wb') as w:
         w.setnchannels(1)
@@ -171,10 +172,11 @@ def _pcm_to_wav(pcm_data, rate=24000):
     return buf.getvalue()
 
 def do_tts(text):
-    """Gemini TTS — returns WAV bytes."""
+    """Gemini TTS — returns WAV bytes. Same approach as the reference telugu_voice_api.py."""
+    text = text[:500]
     response = gemini_client.models.generate_content(
         model="gemini-2.0-flash-preview-tts",
-        contents=text[:500],
+        contents=text,
         config=genai_types.GenerateContentConfig(
             response_modalities=["AUDIO"],
             speech_config=genai_types.SpeechConfig(
