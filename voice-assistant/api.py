@@ -15,18 +15,27 @@ gemini_client = google_genai.Client(api_key=GEMINI_KEY)
 
 from sentence_transformers import SentenceTransformer
 import chromadb
+import threading
 
-print("Loading manual knowledge base...")
-try:
-    _embed_model = SentenceTransformer("intfloat/multilingual-e5-small")
-    _chroma_client = chromadb.PersistentClient(path="/mnt/vehicledata")
-    _manuals_collection = _chroma_client.get_collection("vehicle_manuals")
-    print("Vehicle manuals DB loaded successfully.")
-except Exception as e:
-    print(f"Warning: Could not load vehicle manuals DB: {e}. RAG disabled.")
-    _embed_model = None
-    _chroma_client = None
-    _manuals_collection = None
+_embed_model = None
+_chroma_client = None
+_manuals_collection = None
+
+def _load_kb():
+    global _embed_model, _chroma_client, _manuals_collection
+    print("Loading manual knowledge base in background...")
+    try:
+        em = SentenceTransformer("intfloat/multilingual-e5-small")
+        cc = chromadb.PersistentClient(path="/mnt/vehicledata")
+        mc = cc.get_collection("vehicle_manuals")
+        _embed_model = em
+        _chroma_client = cc
+        _manuals_collection = mc
+        print("Vehicle manuals DB loaded successfully.")
+    except Exception as e:
+        print(f"Warning: Could not load vehicle manuals DB: {e}. RAG disabled.")
+
+threading.Thread(target=_load_kb, daemon=True).start()
 
 def gemini_translate(text, source_lang, target_lang):
     prompt = f"Translate the following text from {source_lang} to {target_lang}. Return only the translated text, no explanations.\n\nText: {text}"

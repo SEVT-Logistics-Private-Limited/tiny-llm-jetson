@@ -37,5 +37,4 @@ jobs:
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
             --image ${{ secrets.ACR_NAME }}.azurecr.io/telugu-voice-ai:${{ github.sha }} \
             --set-env-vars \
-              GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
-              SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }}
+              GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
