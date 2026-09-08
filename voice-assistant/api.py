@@ -41,7 +41,7 @@ threading.Thread(target=_load_kb, daemon=True).start()
 def gemini_translate(text, source_lang, target_lang):
     prompt = f"Translate the following text from {source_lang} to {target_lang}. Return only the translated text, no explanations.\n\nText: {text}"
     response = gemini_client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.6-flash",
         contents=prompt,
         config=genai_types.GenerateContentConfig(max_output_tokens=500)
     )
@@ -98,7 +98,7 @@ def check_instant(text, ctx):
 def gemini_stt(audio_bytes):
     """Transcribe Telugu audio using Gemini."""
     response = gemini_client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.6-flash",
         contents=[
             genai_types.Content(parts=[
                 genai_types.Part(
@@ -160,7 +160,7 @@ def telugu_llm(messages):
             parts=[genai_types.Part(text=m["content"])]
         ))
     response = gemini_client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.6-flash",
         contents=contents,
         config=genai_types.GenerateContentConfig(
             system_instruction=system_msg,
@@ -183,7 +183,7 @@ def do_tts(text):
     """Gemini TTS — returns WAV bytes."""
     text = text[:500]
     response = gemini_client.models.generate_content(
-        model="gemini-2.0-flash-preview-tts",
+        model="gemini-3.6-flash-preview-tts",
         contents=text,
         config=genai_types.GenerateContentConfig(
             response_modalities=["AUDIO"],
