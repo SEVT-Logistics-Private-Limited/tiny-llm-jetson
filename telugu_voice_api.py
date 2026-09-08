@@ -1,4 +1,4 @@
-import base64, sarvamai, requests, tempfile, subprocess, os, re, io, wave
+import base64, os, re, io, wave
 from google import genai as google_genai
 from google.genai import types as genai_types
 from fastapi import FastAPI, HTTPException
@@ -9,10 +9,8 @@ from typing import List, Optional
 from datetime import datetime
 import pytz
 
-SARVAM_KEY = os.environ["SARVAM_API_KEY"]
 GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 
-sarvam_client = sarvamai.SarvamAI(api_subscription_key=SARVAM_KEY)
 gemini_client = google_genai.Client(api_key=GEMINI_KEY)
 
 def get_context():
@@ -45,18 +43,25 @@ def check_instant(text, ctx):
             return fn(ctx)
     return None
 
-def convert_to_wav(audio_bytes):
-    with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as f:
-        f.write(audio_bytes)
-        webm_path = f.name
-    wav_path = webm_path.replace('.webm', '.wav')
-    subprocess.run(['/usr/bin/ffmpeg', '-y', '-i', webm_path,
-        '-ar', '16000', '-ac', '1', '-f', 'wav', wav_path], capture_output=True)
-    with open(wav_path, 'rb') as f:
-        wav_bytes = f.read()
-    os.unlink(webm_path)
-    os.unlink(wav_path)
-    return wav_bytes
+def gemini_stt(audio_bytes):
+    """Transcribe Telugu audio using Gemini."""
+    response = gemini_client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=[
+            genai_types.Content(parts=[
+                genai_types.Part(
+                    inline_data=genai_types.Blob(
+                        mime_type="audio/webm",
+                        data=audio_bytes
+                    )
+                ),
+                genai_types.Part(
+                    text="Transcribe exactly what is spoken in Telugu in this audio. Return only the transcribed Telugu text, no explanations or translations."
+                )
+            ])
+        ]
+    )
+    return response.text.strip()
 
 def clean_for_tts(text):
     text = re.sub(r'[*/#_+|\[\]{}<>^~`\\]', '', text)
@@ -72,7 +77,7 @@ def clean_for_tts(text):
 
 def build_system(ctx):
     return (
-        "నువ్వు యోధ అనే తెలుగు AI అసిస్టెంట్‌వి.\n"
+        "నువ్వు యోధ అనే తెలుగు AI అసిస్టెంట్‌వి. నువ్వు చాలా స్నేహంగా, వేడుకగా మాట్లాడతావు.\n"
         f"సమయం: {ctx['time']} IST, తేదీ: {ctx['date']}, వారం: {ctx['day']}\n"
         "భారత రాజధాని న్యూఢిల్లీ, తెలంగాణ రాజధాని హైదరాబాద్, ఆంధ్రప్రదేశ్ రాజధాని అమరావతి.\n"
         "నియమాలు:\n"
@@ -112,6 +117,7 @@ def _pcm_to_wav(pcm_data, rate=24000):
     return buf.getvalue()
 
 def do_tts(text):
+    text = text[:500]
     response = gemini_client.models.generate_content(
         model="gemini-2.0-flash-preview-tts",
         contents=text,
@@ -129,7 +135,7 @@ def do_tts(text):
     pcm_data = response.candidates[0].content.parts[0].inline_data.data
     return _pcm_to_wav(pcm_data)
 
-app = FastAPI(title="Telugu Voice AI", version="5.0")
+app = FastAPI(title="Telugu Voice AI", version="8.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class Msg(BaseModel):
@@ -149,7 +155,7 @@ class AudioReq(BaseModel):
 @app.get("/")
 def health():
     ctx = get_context()
-    return {"status": "running", "version": "5.0", "time": ctx['time'], "date": ctx['date']}
+    return {"status": "running", "version": "8.0", "time": ctx['time'], "date": ctx['date']}
 
 @app.get("/assistant")
 def assistant():
@@ -167,10 +173,7 @@ def tts(req: TextReq):
 def converse(req: ConvReq):
     try:
         ctx = get_context()
-        wav = convert_to_wav(base64.b64decode(req.audio_base64))
-        stt = sarvam_client.speech_to_text.transcribe(
-            file=("audio.wav", wav), model="saarika:v2.5", language_code="te-IN")
-        user_text = stt.transcript
+        user_text = gemini_stt(base64.b64decode(req.audio_base64))
         if not user_text.strip():
             raise HTTPException(400, "Empty transcript")
         instant = check_instant(user_text, ctx)
@@ -201,10 +204,7 @@ def converse(req: ConvReq):
 def voice(req: AudioReq):
     try:
         ctx = get_context()
-        wav = convert_to_wav(base64.b64decode(req.audio_base64))
-        stt = sarvam_client.speech_to_text.transcribe(
-            file=("audio.wav", wav), model="saarika:v2.5", language_code="te-IN")
-        text = stt.transcript
+        text = gemini_stt(base64.b64decode(req.audio_base64))
         if not text.strip():
             raise HTTPException(400, "Empty transcript")
         instant = check_instant(text, ctx)
