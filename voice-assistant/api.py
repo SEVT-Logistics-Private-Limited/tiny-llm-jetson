@@ -1,6 +1,7 @@
-import base64, requests, os, re, io, wave, traceback, json, time
+import base64, requests, os, re, io, traceback, json, time
 from google import genai as google_genai
 from google.genai import types as genai_types
+from gtts import gTTS
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -93,7 +94,6 @@ INSTANT_RESPONSES = {
 }
 
 def check_instant(text, ctx):
-    # Only match when the entire message IS the keyword (not substring)
     t = text.strip().lower().rstrip('?.,!')
     for kw, fn in INSTANT_RESPONSES.items():
         if t == kw.lower():
@@ -175,44 +175,14 @@ def telugu_llm(messages):
     )
     return clean_for_tts(response.text)
 
-def _pcm_to_wav(pcm_data, rate=24000):
-    """Convert raw PCM (16-bit signed LE, mono) to WAV bytes."""
-    buf = io.BytesIO()
-    with wave.open(buf, 'wb') as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(rate)
-        w.writeframes(pcm_data)
-    return buf.getvalue()
-
 def do_tts(text):
-    """Gemini TTS — returns WAV bytes. Retries up to 3 times on transient failure."""
+    """TTS via gTTS (Google Translate TTS). Returns MP3 bytes."""
     text = text[:500]
-    last_exc = None
-    for attempt in range(3):
-        try:
-            response = gemini_client.models.generate_content(
-                model="gemini-2.0-flash-preview-tts",
-                contents=text,
-                config=genai_types.GenerateContentConfig(
-                    response_modalities=["AUDIO"],
-                    speech_config=genai_types.SpeechConfig(
-                        voice_config=genai_types.VoiceConfig(
-                            prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                                voice_name="Aoede"
-                            )
-                        )
-                    )
-                )
-            )
-            pcm_data = response.candidates[0].content.parts[0].inline_data.data
-            return _pcm_to_wav(pcm_data)
-        except Exception as e:
-            last_exc = e
-            print(f"TTS attempt {attempt+1} failed: {e}")
-            if attempt < 2:
-                time.sleep(1)
-    raise last_exc
+    tts = gTTS(text=text, lang='te', slow=False, tld='co.in')
+    buf = io.BytesIO()
+    tts.write_to_fp(buf)
+    buf.seek(0)
+    return buf.read()
 
 app = FastAPI(title="Telugu Voice AI", version="10.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
