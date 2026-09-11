@@ -877,7 +877,7 @@ function playAudioB64(b64) {
       const bytes = atob(b64);
       const buf = new Uint8Array(bytes.length);
       for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
-      const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+      const url = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
       sharedAudio.src = url;
       const cleanup = () => { URL.revokeObjectURL(url); res(); };
       sharedAudio.onended = cleanup;
