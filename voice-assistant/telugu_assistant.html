@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="te">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -8,264 +8,240 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;background:#ffffff;color:#2d3a1e}
-body{display:flex;align-items:center;justify-content:center;min-height:100%}
+html,body{height:100%;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased}
+body{display:flex;align-items:center;justify-content:center;background:#0a0f0a}
 
-.screen{
-  display:none;width:100%;max-width:480px;min-height:100dvh;
-  flex-direction:column;align-items:center;
-  background:#ffffff;
-  padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);
-}
+.screen{display:none;width:100%;max-width:480px;min-height:100dvh;flex-direction:column;align-items:center}
 .screen.active{display:flex}
 
 /* ── LOGIN ── */
-#login{justify-content:center;padding-left:28px;padding-right:28px;gap:0}
-
+#login{
+  background:#0e1410;justify-content:center;
+  padding:32px 28px;gap:0;
+}
 .login-logo{
-  width:64px;height:64px;border-radius:18px;background:#8aaa6a;
+  width:68px;height:68px;border-radius:20px;
+  background:linear-gradient(135deg,#4a7c30,#88c060);
   display:flex;align-items:center;justify-content:center;
-  margin-bottom:24px;
+  margin-bottom:28px;
+  box-shadow:0 8px 32px rgba(136,192,96,.25);
 }
 .login-logo svg{width:32px;height:32px;color:#fff}
-
-.login-title{
-  font-size:28px;font-weight:600;color:#2d3a1e;letter-spacing:-.5px;
-  margin-bottom:6px;text-align:center;
-}
-.login-sub{
-  font-size:14px;color:#7a8c6a;margin-bottom:36px;text-align:center;
-}
-
+.login-title{font-size:26px;font-weight:600;color:#e4edd4;letter-spacing:-.5px;margin-bottom:6px;text-align:center}
+.login-sub{font-size:14px;color:#6a8060;margin-bottom:40px;text-align:center}
 .login-form{width:100%;display:flex;flex-direction:column;gap:14px}
-
-.input-wrap{
-  display:flex;flex-direction:column;gap:6px;
-}
-.input-wrap label{
-  font-size:12px;font-weight:500;color:#5a6e4a;letter-spacing:.3px;text-transform:uppercase;
-}
+.input-wrap{display:flex;flex-direction:column;gap:6px}
+.input-wrap label{font-size:11px;font-weight:500;color:#5a7050;letter-spacing:.5px;text-transform:uppercase}
 .input-wrap input{
-  width:100%;padding:15px 16px;
-  border:1.5px solid #e0ddd6;border-radius:12px;
-  font-family:inherit;font-size:15px;color:#2d3a1e;
-  background:#fafafa;outline:none;
-  transition:border-color .15s,background .15s;
+  width:100%;padding:14px 16px;
+  border:1.5px solid #2a3828;border-radius:12px;
+  font-family:inherit;font-size:15px;color:#e4edd4;
+  background:#161d14;outline:none;
+  transition:border-color .15s;
 }
-.input-wrap input:focus{border-color:#8aaa6a;background:#fff}
-.input-wrap input::placeholder{color:#b0b8a4}
-
-.login-error{
-  font-size:13px;color:#c0392b;text-align:center;
-  min-height:18px;margin-top:-4px;
-}
-
+.input-wrap input:focus{border-color:#88c060}
+.input-wrap input::placeholder{color:#3a4c34}
+.login-error{font-size:13px;color:#e07060;text-align:center;min-height:18px;margin-top:-4px}
 .login-btn{
-  width:100%;margin-top:8px;
-  padding:18px 24px;
-  background:#8aaa6a;border:none;border-radius:14px;
-  color:#fff;font-size:16px;font-weight:500;
-  cursor:pointer;
-  transition:background .15s,transform .15s;
+  width:100%;margin-top:8px;padding:17px 24px;
+  background:linear-gradient(135deg,#5a9040,#88c060);border:none;border-radius:14px;
+  color:#fff;font-size:16px;font-weight:500;cursor:pointer;
+  transition:opacity .15s,transform .1s;
 }
-.login-btn:hover{background:#7a9c5a}
+.login-btn:hover{opacity:.9}
 .login-btn:active{transform:scale(.98)}
 
 /* ── HOME ── */
-#home{justify-content:flex-start;padding-left:28px;padding-right:28px}
+#home{background:#0e1410;justify-content:flex-start;padding:0 24px}
 
-.home-greeting{
+.home-top{
   width:100%;
   padding-top:max(64px,env(safe-area-inset-top,64px));
-  padding-bottom:8px;
-  font-size:13px;font-weight:500;color:#7a8c6a;
-  letter-spacing:.3px;text-transform:uppercase;
+  margin-bottom:32px;
 }
-.home-title{
-  width:100%;margin-bottom:32px;
-  font-size:30px;font-weight:600;color:#2d3a1e;letter-spacing:-.5px;line-height:1.2;
-}
+.home-label{font-size:12px;font-weight:500;color:#5a7050;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px}
+.home-title{font-size:30px;font-weight:600;color:#e4edd4;letter-spacing:-.5px;line-height:1.25}
 
 .call-card{
-  width:100%;border-radius:22px;overflow:hidden;cursor:pointer;
-  background:#8aaa6a;
-  padding:48px 28px;
-  display:flex;flex-direction:column;align-items:flex-start;
-  gap:20px;
-  transition:transform .18s ease,box-shadow .18s ease;
+  width:100%;border-radius:24px;overflow:hidden;cursor:pointer;
+  background:linear-gradient(160deg,#1e3018,#2a4520);
+  border:1px solid #3a5030;
+  padding:40px 28px 36px;
+  display:flex;flex-direction:column;align-items:flex-start;gap:16px;
+  transition:transform .18s,box-shadow .18s;
 }
-.call-card:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(90,120,60,.2)}
-.call-card:active{transform:translateY(0) scale(.98)}
+.call-card:hover{transform:translateY(-2px);box-shadow:0 16px 48px rgba(88,160,48,.15)}
+.call-card:active{transform:scale(.98)}
 
-.card-phone{
-  width:44px;height:44px;background:rgba(255,255,255,.25);border-radius:12px;
+.card-avatar{
+  width:52px;height:52px;border-radius:16px;
+  background:linear-gradient(135deg,#4a7c30,#88c060);
   display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 16px rgba(136,192,96,.3);
 }
-.card-phone svg{width:22px;height:22px;color:#fff}
-.card-name{font-size:28px;font-weight:600;color:#fff;letter-spacing:-.4px}
-.card-hint{font-size:14px;font-weight:400;color:rgba(255,255,255,.75)}
+.card-avatar svg{width:26px;height:26px;color:#fff}
+.card-name{font-size:26px;font-weight:600;color:#e4edd4;letter-spacing:-.4px}
+.card-sub{font-size:14px;color:#7a9870;line-height:1.5}
 
-.warmup-badge{
-  font-size:12px;color:rgba(255,255,255,.55);
-  display:flex;align-items:center;gap:6px;
-}
-.warmup-dot{
-  width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.4);
-  transition:background .3s;
-}
-.warmup-dot.ready{background:#b8ff80}
+.status-row{display:flex;align-items:center;gap:8px;margin-top:4px}
+.status-dot{width:7px;height:7px;border-radius:50%;background:#3a5030;transition:background .4s}
+.status-dot.ready{background:#88c060;box-shadow:0 0 6px #88c06080}
+.status-txt{font-size:13px;color:#5a7850}
 
-.test-sound-btn{
-  width:100%;margin-top:14px;
-  padding:14px 20px;
-  background:#f0f5ea;border:1.5px solid #c8d8a8;border-radius:14px;
-  color:#4a6030;font-size:14px;font-weight:500;
+.test-btn{
+  width:100%;margin-top:16px;padding:14px 20px;
+  background:#161d14;border:1.5px solid #2a3828;border-radius:14px;
+  color:#7a9870;font-size:14px;font-weight:500;
   cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
-  transition:background .15s;
+  transition:border-color .15s,color .15s;
 }
-.test-sound-btn:hover{background:#e4eeda}
-.test-sound-btn:active{transform:scale(.98)}
-.test-sound-btn.testing{opacity:.6;pointer-events:none}
+.test-btn:hover{border-color:#88c06060;color:#b0d890}
+.test-btn:active{transform:scale(.98)}
+.test-btn.testing{opacity:.5;pointer-events:none}
 
-.disclaimer{
-  width:100%;margin-top:16px;
-  font-size:12px;color:#9aaa8a;line-height:1.6;
+.disclaimer{width:100%;margin-top:20px;font-size:12px;color:#3a4c34;line-height:1.6;padding-bottom:max(24px,env(safe-area-inset-bottom,24px))}
+
+/* ── CALL SCREEN ── */
+#call{
+  background:#0a0f0a;
+  position:relative;
 }
-
-/* ── CALL ── */
-#call{justify-content:flex-start;padding-left:24px;padding-right:24px}
 
 .call-header{
   width:100%;
-  padding-top:max(52px,env(safe-area-inset-top,52px));
-  padding-bottom:24px;
+  padding:max(52px,env(safe-area-inset-top,52px)) 20px 16px;
   display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;
 }
-.call-title{font-size:17px;font-weight:600;color:#2d3a1e}
-.call-timer{
-  font-size:15px;font-weight:400;color:#7a8c6a;
-  font-variant-numeric:tabular-nums;letter-spacing:.5px;
+.call-hname{font-size:16px;font-weight:600;color:#e4edd4}
+.call-htimer{font-size:14px;color:#4a6040;font-variant-numeric:tabular-nums;letter-spacing:.5px}
+
+/* conversation messages */
+.conv-wrap{
+  flex:1;width:100%;overflow-y:auto;
+  padding:8px 16px 12px;
+  display:flex;flex-direction:column;gap:10px;
+  scroll-behavior:smooth;
+}
+.conv-wrap::-webkit-scrollbar{width:3px}
+.conv-wrap::-webkit-scrollbar-track{background:transparent}
+.conv-wrap::-webkit-scrollbar-thumb{background:#2a3828;border-radius:2px}
+
+.msg{
+  max-width:80%;padding:12px 16px;border-radius:18px;
+  font-size:14px;line-height:1.6;
+  animation:msgIn .2s ease-out;
+}
+@keyframes msgIn{
+  from{opacity:0;transform:translateY(6px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.msg.user{
+  align-self:flex-end;
+  background:#1a2816;border:1px solid #2a3c22;
+  color:#b8d898;border-bottom-right-radius:4px;
+}
+.msg.ai{
+  align-self:flex-start;
+  background:#141d12;border:1px solid #243820;
+  color:#d4e8c4;border-bottom-left-radius:4px;
+}
+.msg.ai.thinking{
+  color:#4a6040;
+  font-style:italic;
 }
 
-.orb-wrap{
-  flex:1;display:flex;align-items:center;justify-content:center;width:100%;
+/* status row */
+.call-status-row{
+  width:100%;
+  padding:8px 20px;
+  display:flex;align-items:center;gap:8px;
+  flex-shrink:0;
 }
-.orb{
-  width:180px;height:180px;border-radius:50%;
-  background:#8aaa6a;
-  transition:border-radius .4s ease,background .4s ease;
+.state-dot{
+  width:6px;height:6px;border-radius:50%;background:#3a5030;
+  transition:background .3s;flex-shrink:0;
 }
-.orb.idle{animation:orbFloat 5s ease-in-out infinite}
-.orb.listening{
-  animation:orbListen 1.5s ease-in-out infinite;
-  background:#7a9c5a;
-}
-.orb.speaking{
-  animation:orbSpeak .85s ease-in-out infinite;
-  background:#6e8f50;
-}
-.orb.thinking{
-  animation:orbThink 2.4s ease-in-out infinite;
-  background:#8aaa6a;opacity:.75;
-}
+.state-dot.listening{background:#88c060;animation:dotPulse 1.2s ease-in-out infinite}
+.state-dot.thinking{background:#f0b840;animation:dotPulse 1.8s ease-in-out infinite}
+.state-dot.speaking{background:#60a8e0;animation:dotPulse .9s ease-in-out infinite}
+@keyframes dotPulse{0%,100%{opacity:1}50%{opacity:.35}}
+.state-label{font-size:13px;color:#5a7050}
 
-@keyframes orbFloat{
-  0%,100%{transform:translateY(0) scale(1)}
-  50%{transform:translateY(-10px) scale(1.015)}
+/* waveform */
+.waveform-area{
+  width:100%;
+  padding:12px 20px max(20px,env(safe-area-inset-bottom,20px));
+  display:flex;flex-direction:column;align-items:center;gap:16px;
+  flex-shrink:0;
+  background:linear-gradient(to top,#0d130d,transparent);
 }
-@keyframes orbListen{
-  0%{transform:scale(1);border-radius:50%}
-  25%{transform:scale(1.06);border-radius:52% 48% 54% 46%/46% 54% 46% 54%}
-  50%{transform:scale(1.10);border-radius:50%}
-  75%{transform:scale(1.06);border-radius:47% 53% 46% 54%/54% 46% 54% 46%}
-  100%{transform:scale(1);border-radius:50%}
+.wave-bars{
+  display:flex;align-items:center;gap:5px;height:48px;
 }
-@keyframes orbSpeak{
-  0%{transform:scale(1);border-radius:50%}
-  20%{transform:scale(1.10);border-radius:54% 46% 58% 42%/42% 58% 42% 58%}
-  40%{transform:scale(1.06);border-radius:47% 53% 44% 56%/56% 44% 56% 44%}
-  60%{transform:scale(1.12);border-radius:52% 48% 53% 47%/47% 53% 47% 53%}
-  80%{transform:scale(1.08);border-radius:50% 50% 47% 53%/53% 47% 53% 47%}
-  100%{transform:scale(1);border-radius:50%}
-}
-@keyframes orbThink{
-  0%,100%{transform:scale(.96) translateY(0)}
-  50%{transform:scale(1.02) translateY(-5px)}
-}
-
-.call-status{
-  font-size:14px;font-weight:400;color:#7a8c6a;
-  margin-top:20px;margin-bottom:8px;
-  min-height:20px;
-}
-
-.transcript-peek{
-  width:100%;max-width:340px;
-  font-size:13px;color:#5a6e4a;line-height:1.6;
-  min-height:40px;text-align:center;
-  max-height:60px;overflow:hidden;
+.wave-bar{
+  width:4px;border-radius:3px;
+  background:#2a3c28;
+  transition:height .08s ease;
+  min-height:4px;
 }
 
 .call-controls{
-  width:100%;
-  padding-bottom:max(36px,env(safe-area-inset-bottom,36px));
-  padding-top:16px;
+  display:flex;gap:12px;width:100%;max-width:280px;
 }
-.controls-panel{
-  background:#eeeeee;border-radius:18px;padding:6px;
-  display:grid;grid-template-columns:1fr 1fr;gap:6px;
-}
-.ctrl-btn{
-  padding:18px 12px;border-radius:12px;
-  display:flex;align-items:center;justify-content:center;gap:10px;
-  font-size:15px;font-weight:500;color:#2d3a1e;
-  cursor:pointer;background:#f7f7f7;border:none;
+.ctrl{
+  flex:1;padding:14px 12px;border-radius:14px;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  font-size:14px;font-weight:500;color:#7a9870;
+  cursor:pointer;background:#141d12;border:1px solid #2a3828;
   transition:background .15s;
 }
-.ctrl-btn:hover{background:#ebebeb}
-.ctrl-btn:active{background:#e0e0e0;transform:scale(.97)}
-.ctrl-btn.muted{background:#c8d4b4;color:#4a6030}
-.ctrl-btn.end-btn{color:#c0392b;background:#f9eded}
-.ctrl-btn.end-btn:hover{background:#f2e0e0}
-.ctrl-btn svg{width:18px;height:18px}
+.ctrl:hover{background:#1e2a1e}
+.ctrl:active{transform:scale(.97)}
+.ctrl.muted{color:#88c060;border-color:#4a7030}
+.ctrl.end{color:#e07060;background:#1a1210;border-color:#3a2820}
+.ctrl.end:hover{background:#221816}
+.ctrl svg{width:16px;height:16px;flex-shrink:0}
 
 /* ── POST-CALL ── */
-#postcall{justify-content:flex-start;padding-left:28px;padding-right:28px}
-
-.postcall-header{
+#postcall{
+  background:#0e1410;justify-content:flex-start;
+  padding:0 24px;
+}
+.postcall-top{
   width:100%;
   padding-top:max(80px,env(safe-area-inset-top,80px));
-  padding-bottom:32px;
-  font-size:24px;font-weight:600;color:#2d3a1e;letter-spacing:-.3px;line-height:1.3;
+  margin-bottom:32px;
 }
+.postcall-title{font-size:24px;font-weight:600;color:#e4edd4;letter-spacing:-.3px;line-height:1.3}
 
 .rating-card{
-  width:100%;background:#c8d8a8;border-radius:22px;
-  padding:36px 28px;
+  width:100%;background:#141d12;border:1px solid #2a3828;border-radius:22px;
+  padding:32px 24px;
   display:flex;flex-direction:column;align-items:center;gap:20px;
 }
-.rating-question{font-size:16px;font-weight:500;color:#4a6030}
-.stars{display:flex;gap:10px}
+.rating-q{font-size:15px;color:#9ab880}
+.stars{display:flex;gap:8px}
 .star{
   width:44px;height:44px;cursor:pointer;
   display:flex;align-items:center;justify-content:center;
   background:none;border:none;
 }
-.star svg{width:36px;height:36px;transition:transform .15s}
+.star svg{width:34px;height:34px;transition:transform .15s}
 .star:hover svg{transform:scale(1.15)}
-.star svg .star-path{fill:rgba(74,96,48,.25);stroke:rgba(74,96,48,.4);stroke-width:1.5}
-.star.filled svg .star-path{fill:#4a6030;stroke:#4a6030}
+.star svg .sp{fill:rgba(138,192,96,.15);stroke:rgba(138,192,96,.3);stroke-width:1.5}
+.star.filled svg .sp{fill:#88c060;stroke:#88c060}
 
-.continue-btn{
-  width:100%;margin-top:24px;
-  padding:18px 24px;
-  background:#8aaa6a;border:none;border-radius:14px;
-  color:#fff;font-size:16px;font-weight:500;
-  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
-  transition:background .15s,transform .15s;
+.again-btn{
+  width:100%;margin-top:24px;padding:17px 24px;
+  background:linear-gradient(135deg,#3a6028,#6a9848);border:none;border-radius:14px;
+  color:#fff;font-size:15px;font-weight:500;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:opacity .15s;
+  margin-bottom:max(32px,env(safe-area-inset-bottom,32px));
 }
-.continue-btn:hover{background:#7a9c5a}
-.continue-btn:active{transform:scale(.98)}
+.again-btn:hover{opacity:.9}
+.again-btn:active{transform:scale(.98)}
 </style>
 </head>
 <body>
@@ -279,7 +255,6 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
   </div>
   <div class="login-title">Welcome to Yodha</div>
   <div class="login-sub">Sign in to continue</div>
-
   <div class="login-form">
     <div class="input-wrap">
       <label>Email</label>
@@ -296,62 +271,65 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
 
 <!-- HOME -->
 <div class="screen" id="home">
-  <div class="home-greeting" id="greeting">Good evening</div>
-  <div class="home-title">Your Telugu<br>voice assistant</div>
+  <div class="home-top">
+    <div class="home-label" id="greeting">Good evening</div>
+    <div class="home-title">Your Telugu<br>voice assistant</div>
+  </div>
 
   <div class="call-card" onclick="startCall()">
-    <div class="card-phone">
+    <div class="card-avatar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8a19.79 19.79 0 01-3.07-8.68A2 2 0 012 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
       </svg>
     </div>
     <div class="card-name">Yodha</div>
-    <div class="card-hint">Tap to start talking</div>
-    <div class="warmup-badge">
-      <div class="warmup-dot" id="warmupDot"></div>
-      <span id="warmupLabel">Connecting...</span>
+    <div class="card-sub">తెలుగు AI అసిస్టెంట్ · Tap to start a conversation</div>
+    <div class="status-row">
+      <div class="status-dot" id="warmupDot"></div>
+      <span class="status-txt" id="warmupLabel">Connecting…</span>
     </div>
   </div>
 
-  <button class="test-sound-btn" id="testSoundBtn" onclick="testSound()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+  <button class="test-btn" id="testSoundBtn" onclick="testSound()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
       <path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/>
     </svg>
     Test Sound
   </button>
 
-  <p class="disclaimer">Yodha can make mistakes. Always double-check important information.</p>
+  <p class="disclaimer">Yodha can make mistakes. Always verify important information.</p>
 </div>
 
 <!-- CALL -->
 <div class="screen" id="call">
   <div class="call-header">
-    <div class="call-title">Yodha</div>
-    <div class="call-timer" id="callTimer">00:00</div>
+    <div class="call-hname">Yodha</div>
+    <div class="call-htimer" id="callTimer">00:00</div>
   </div>
 
-  <div class="orb-wrap">
-    <div class="orb idle" id="orb"></div>
+  <div class="conv-wrap" id="convWrap"></div>
+
+  <div class="call-status-row">
+    <div class="state-dot" id="stateDot"></div>
+    <span class="state-label" id="stateLabel">Ready to talk</span>
   </div>
 
-  <div class="call-status" id="statusLabel">Ready to talk</div>
-  <div class="transcript-peek" id="transcriptPeek"></div>
-
-  <div class="call-controls">
-    <div class="controls-panel">
-      <button class="ctrl-btn" id="muteBtn" onclick="toggleMute()">
+  <div class="waveform-area">
+    <div class="wave-bars" id="waveBars"></div>
+    <div class="call-controls">
+      <button class="ctrl" id="muteBtn" onclick="toggleMute()">
         <svg id="muteIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
           <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
         </svg>
         <span id="muteLbl">Mute</span>
       </button>
-      <button class="ctrl-btn end-btn" onclick="endCall()">
+      <button class="ctrl end" onclick="endCall()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 17.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-3-2.31M2.07 4.74A19.79 19.79 0 005.14 13.37M1 1l22 22"/>
         </svg>
-        End call
+        End
       </button>
     </div>
   </div>
@@ -359,16 +337,16 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
 
 <!-- POST-CALL -->
 <div class="screen" id="postcall">
-  <div class="postcall-header">Thank you for<br>talking to Yodha</div>
-
+  <div class="postcall-top">
+    <div class="postcall-title">Thank you for<br>talking to Yodha</div>
+  </div>
   <div class="rating-card">
-    <div class="rating-question">How was your conversation?</div>
+    <div class="rating-q">How was your conversation?</div>
     <div class="stars" id="stars"></div>
   </div>
-
-  <button class="continue-btn" onclick="startNewCall()">
+  <button class="again-btn" onclick="startNewCall()">
     Start a new conversation
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
       <path d="M5 12h14M12 5l7 7-7 7"/>
     </svg>
   </button>
@@ -376,11 +354,11 @@ body{display:flex;align-items:center;justify-content:center;min-height:100%}
 
 <script>
 const API = "https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontainerapps.io";
-
-// ── Auth ──
 const VALID_EMAIL = "yodhakit@gmail.com";
 const VALID_PASS  = "Yodhakit";
+const N_BARS = 9;
 
+// ── Auth ──
 function doLogin() {
   const email = document.getElementById('loginEmail').value.trim().toLowerCase();
   const pass  = document.getElementById('loginPassword').value;
@@ -392,111 +370,76 @@ function doLogin() {
     showScreen('home');
     warmup();
   } else {
-    err.textContent = 'Incorrect email or password. Please try again.';
+    err.textContent = 'Incorrect email or password.';
     document.getElementById('loginPassword').value = '';
   }
 }
-
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('login').classList.contains('active')) doLogin();
 });
 
 // ── Init ──
 (function init() {
-  let loggedIn = false;
-  try { loggedIn = localStorage.getItem('yodha_auth') === '1'; } catch(e) {}
-  showScreen(loggedIn ? 'home' : 'login');
-  if (loggedIn) warmup();
+  let ok = false;
+  try { ok = localStorage.getItem('yodha_auth') === '1'; } catch(e) {}
+  showScreen(ok ? 'home' : 'login');
+  if (ok) warmup();
+  setGreeting();
+  buildStars();
+  buildWaveBars();
 })();
 
-let sharedAudio = new Audio();
-sharedAudio.playsInline = true;
-
-let active = false, rec = null, chunks = [], history = [], muted = false;
-let audioCtx = null, analyser = null, silenceTimer = null, noSpeechTimer = null, monitorRAF = null;
-let hasSpoken = false, endedByTimeout = false, userStopped = false;
-let timerInterval = null, callSeconds = 0;
-let starRating = 0;
-let apiReady = false;
-
-// ── Greeting ──
-(function setGreeting() {
+// ── Greeting / Stars / Bars ──
+function setGreeting() {
   const h = new Date().getHours();
-  const label = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 21 ? 'Good evening' : 'Good night';
-  document.getElementById('greeting').textContent = label;
-})();
-
-// ── Stars ──
-(function buildStars() {
-  const container = document.getElementById('stars');
-  for (let i = 1; i <= 5; i++) {
-    const btn = document.createElement('button');
-    btn.className = 'star';
-    btn.setAttribute('data-val', i);
-    btn.innerHTML = `<svg viewBox="0 0 24 24"><path class="star-path" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
-    btn.onclick = () => setRating(i);
-    container.appendChild(btn);
-  }
-})();
-
-function setRating(val) {
-  starRating = val;
-  document.querySelectorAll('.star').forEach(s => {
-    s.classList.toggle('filled', parseInt(s.dataset.val) <= val);
-  });
+  document.getElementById('greeting').textContent =
+    h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 21 ? 'Good evening' : 'Good night';
 }
 
-// ── Audio unlock – required for iOS autoplay ──
+function buildStars() {
+  const c = document.getElementById('stars');
+  for (let i = 1; i <= 5; i++) {
+    const b = document.createElement('button');
+    b.className = 'star'; b.dataset.val = i;
+    b.innerHTML = `<svg viewBox="0 0 24 24"><path class="sp" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+    b.onclick = () => { document.querySelectorAll('.star').forEach(s => s.classList.toggle('filled', +s.dataset.val <= i)); };
+    c.appendChild(b);
+  }
+}
+
+function buildWaveBars() {
+  const c = document.getElementById('waveBars');
+  for (let i = 0; i < N_BARS; i++) {
+    const d = document.createElement('div');
+    d.className = 'wave-bar';
+    d.style.height = '4px';
+    c.appendChild(d);
+  }
+}
+
+// ── Audio unlock (iOS) ──
 function unlockAudio() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
+    const b = ctx.createBuffer(1, 1, 22050);
+    const s = ctx.createBufferSource();
+    s.buffer = b; s.connect(ctx.destination); s.start(0);
     setTimeout(() => ctx.close(), 500);
   } catch(e) {}
 }
 
-// ── Test Sound ──
-async function testSound() {
-  const btn = document.getElementById('testSoundBtn');
-  btn.classList.add('testing');
-  btn.textContent = 'Loading...';
-  try {
-    unlockAudio();
-    const resp = await fetch(`${API}/speak`, { signal: AbortSignal.timeout(20000) });
-    if (!resp.ok) throw new Error(`${resp.status}`);
-    const data = await resp.json();
-    await playAudio(data.audio_base64);
-    btn.textContent = '✓ Sound works!';
-    setTimeout(() => {
-      btn.classList.remove('testing');
-      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/></svg> Test Sound`;
-    }, 2000);
-  } catch(e) {
-    btn.textContent = `Error: ${e.message}`;
-    btn.classList.remove('testing');
-    setTimeout(() => {
-      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/></svg> Test Sound`;
-    }, 3000);
-  }
-}
-
-// ── Warmup ping ──
-async function warmup() {
-  try {
-    const resp = await fetch(`${API}/`, { signal: AbortSignal.timeout(15000) });
-    if (resp.ok) {
-      apiReady = true;
-      document.getElementById('warmupDot').classList.add('ready');
-      document.getElementById('warmupLabel').textContent = 'Ready';
-    }
-  } catch {
-    document.getElementById('warmupLabel').textContent = 'Tap to connect';
-  }
-}
+// ── State ──
+let active = false, muted = false, userStopped = false;
+let history = [];
+let rec = null, chunks = [];
+let audioCtx = null, analyser = null;
+let silenceTimer = null, noSpeechTimer = null, monitorRAF = null;
+let hasSpoken = false, endedByTimeout = false;
+let waveRAF = null, wavePhase = 0;
+let timerInterval = null, callSeconds = 0;
+let sharedAudio = new Audio();
+sharedAudio.playsInline = true;
+let isPlayingAI = false;
 
 // ── Navigation ──
 function showScreen(id) {
@@ -504,236 +447,365 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 
+// ── Warmup ──
+async function warmup() {
+  try {
+    const r = await fetch(`${API}/healthz`, { signal: AbortSignal.timeout(12000) });
+    if (r.ok) {
+      document.getElementById('warmupDot').classList.add('ready');
+      document.getElementById('warmupLabel').textContent = 'Ready';
+    }
+  } catch { document.getElementById('warmupLabel').textContent = 'Tap to connect'; }
+}
+
+// ── Test Sound ──
+async function testSound() {
+  const btn = document.getElementById('testSoundBtn');
+  btn.classList.add('testing'); btn.textContent = 'Loading…';
+  try {
+    unlockAudio();
+    const r = await fetch(`${API}/speak`, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    await playAudioB64(d.audio_base64);
+    btn.textContent = '✓ Sound works!';
+    setTimeout(() => { btn.classList.remove('testing'); btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/></svg> Test Sound`; }, 2500);
+  } catch(e) {
+    btn.textContent = `Error: ${e.message}`;
+    btn.classList.remove('testing');
+    setTimeout(() => { btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/></svg> Test Sound`; }, 3000);
+  }
+}
+
+// ── Call lifecycle ──
 function startCall() {
-  // Reset state for every new call session
-  userStopped = false;
-  hasSpoken = false;
-  history = [];
+  userStopped = false; history = [];
+  document.getElementById('convWrap').innerHTML = '';
   unlockAudio();
   showScreen('call');
-  callSeconds = 0;
-  updateTimer();
+  callSeconds = 0; updateTimer();
   timerInterval = setInterval(() => { callSeconds++; updateTimer(); }, 1000);
-  start();
+  setState('idle');
+  // AI greets first
+  greetUser();
+}
+
+async function greetUser() {
+  const ctx = getCtx();
+  let greeting = "నమస్కారం! నేను యోధను. చెప్పండి, మీకు ఎలా సహాయం చేయగలను?";
+  if (ctx.hour < 12) greeting = "శుభోదయం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?";
+  else if (ctx.hour < 17) greeting = "శుభ మధ్యాహ్నం! నేను యోధను. చెప్పండి.";
+  else if (ctx.hour < 21) greeting = "శుభ సాయంత్రం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?";
+
+  addMessage('ai', greeting);
+  setState('speaking');
+  try {
+    const r = await fetch(`${API}/tts`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text: greeting}), signal: AbortSignal.timeout(20000)
+    });
+    if (r.ok) { const d = await r.json(); await playAudioB64(d.audio_base64); }
+  } catch(e) { console.warn('greeting tts error:', e); }
+  if (!userStopped) startListening();
 }
 
 function endCall() {
-  clearInterval(timerInterval);
-  timerInterval = null;
-  active = false;
   userStopped = true;
-  sharedAudio.pause();
-  sharedAudio.currentTime = 0;
+  clearInterval(timerInterval);
+  sharedAudio.pause(); sharedAudio.currentTime = 0;
+  isPlayingAI = false;
   if (rec?.state === 'recording') rec.stop();
   cleanupMonitor();
+  cancelAnimationFrame(waveRAF);
   history = [];
-  setOrbState('idle');
-  setStatus('Ready to talk');
-  document.getElementById('transcriptPeek').textContent = '';
-  starRating = 0;
-  document.querySelectorAll('.star').forEach(s => s.classList.remove('filled'));
+  setState('idle');
   showScreen('postcall');
 }
 
-function startNewCall() {
-  showScreen('home');
-  callSeconds = 0;
-  document.getElementById('callTimer').textContent = '00:00';
-}
-
-function updateTimer() {
-  const m = Math.floor(callSeconds / 60).toString().padStart(2, '0');
-  const s = (callSeconds % 60).toString().padStart(2, '0');
-  document.getElementById('callTimer').textContent = `${m}:${s}`;
-}
+function startNewCall() { showScreen('home'); }
 
 function toggleMute() {
   muted = !muted;
-  const btn = document.getElementById('muteBtn');
-  btn.classList.toggle('muted', muted);
+  document.getElementById('muteBtn').classList.toggle('muted', muted);
   document.getElementById('muteLbl').textContent = muted ? 'Unmute' : 'Mute';
   document.getElementById('muteIcon').innerHTML = muted
     ? `<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23M12 19v4M8 23h8"/>`
     : `<path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>`;
-  if (muted && sharedAudio) sharedAudio.pause();
+  if (muted) sharedAudio.pause();
 }
 
-function setOrbState(state) {
-  document.getElementById('orb').className = 'orb ' + (state || 'idle');
+function updateTimer() {
+  const m = Math.floor(callSeconds/60).toString().padStart(2,'0');
+  const s = (callSeconds%60).toString().padStart(2,'0');
+  document.getElementById('callTimer').textContent = `${m}:${s}`;
 }
 
-function setStatus(txt) {
-  document.getElementById('statusLabel').textContent = txt || 'Ready to talk';
+// ── Context ──
+function getCtx() { return {hour: new Date().getHours()}; }
+
+// ── UI state ──
+function setState(state) {
+  const dot = document.getElementById('stateDot');
+  const lbl = document.getElementById('stateLabel');
+  dot.className = 'state-dot' + (state !== 'idle' ? ' ' + state : '');
+  lbl.textContent = {listening:'Listening…', thinking:'Thinking…', speaking:'Speaking…', idle:'Ready to talk'}[state] || 'Ready to talk';
+  animateBars(state);
 }
 
-// ── Record + VAD ──
-async function start() {
+// ── Conversation bubbles ──
+function addMessage(role, text) {
+  const wrap = document.getElementById('convWrap');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.textContent = text;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+
+// ── Waveform animation ──
+const bars = () => document.querySelectorAll('.wave-bar');
+
+function animateBars(state) {
+  cancelAnimationFrame(waveRAF);
+  if (state === 'listening') return; // mic monitor drives bars live
+  function frame() {
+    waveRAF = requestAnimationFrame(frame);
+    wavePhase += state === 'speaking' ? 0.18 : state === 'thinking' ? 0.06 : 0.02;
+    bars().forEach((b, i) => {
+      let h;
+      if (state === 'speaking') {
+        h = 8 + 22 * Math.abs(Math.sin(wavePhase + i * 0.7)) + 10 * Math.abs(Math.sin(wavePhase * 1.7 + i * 0.4));
+      } else if (state === 'thinking') {
+        h = 4 + 8 * Math.abs(Math.sin(wavePhase + i * 0.5));
+      } else {
+        h = 4 + 2 * Math.abs(Math.sin(wavePhase + i * 0.3));
+      }
+      b.style.height = Math.max(4, h) + 'px';
+      b.style.background = state === 'listening' ? '#88c060' : state === 'speaking' ? '#60a8e0' : state === 'thinking' ? '#f0b840' : '#2a3c28';
+    });
+  }
+  frame();
+}
+
+function updateBarsFromAudio(freqData) {
+  const bl = bars();
+  const step = Math.floor(freqData.length / N_BARS);
+  bl.forEach((b, i) => {
+    const bucket = freqData.slice(i * step, (i + 1) * step);
+    const avg = bucket.reduce((a, v) => a + v, 0) / bucket.length;
+    const h = 4 + (avg / 255) * 44;
+    b.style.height = Math.max(4, h) + 'px';
+    b.style.background = '#88c060';
+  });
+}
+
+// ── Listening / VAD ──
+async function startListening() {
   if (userStopped) return;
+  chunks = []; hasSpoken = false; endedByTimeout = false;
+  setState('listening');
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    chunks = [];
-    hasSpoken = false;
-    endedByTimeout = false;
     rec = new MediaRecorder(stream);
     rec.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
     rec.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
       cleanupMonitor();
       if (endedByTimeout || userStopped) {
-        chunks = [];
-        active = false;
-        setOrbState('idle');
-        setStatus('Ready to talk');
-        return;
+        setState('idle'); return;
       }
       process();
     };
     rec.start(100);
-    active = true;
-    setOrbState('listening');
-    setStatus('Listening...');
 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioCtx.createMediaStreamSource(stream);
+    const src = audioCtx.createMediaStreamSource(stream);
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 512;
-    source.connect(analyser);
-    const freqData = new Uint8Array(analyser.frequencyBinCount);
+    src.connect(analyser);
+    const fd = new Uint8Array(analyser.frequencyBinCount);
 
-    const SPEECH_THRESHOLD = 12;   // lowered from 25 — catches more mic types
-    const SILENCE_HOLD_MS  = 1200; // slightly faster response
-    const NO_SPEECH_TIMEOUT_MS = 10000;
+    const SPEECH_THR = 12;
+    const SILENCE_MS = 1100;
+    const NO_SPEECH_MS = 9000;
 
     noSpeechTimer = setTimeout(() => {
       if (!hasSpoken) { endedByTimeout = true; if (rec?.state === 'recording') rec.stop(); }
-    }, NO_SPEECH_TIMEOUT_MS);
+    }, NO_SPEECH_MS);
 
     function monitor() {
       if (!analyser) return;
-      analyser.getByteFrequencyData(freqData);
-      const avg = freqData.reduce((a, b) => a + b, 0) / freqData.length;
-      if (avg > SPEECH_THRESHOLD) {
+      analyser.getByteFrequencyData(fd);
+      updateBarsFromAudio(fd);
+      const avg = fd.reduce((a, b) => a + b, 0) / fd.length;
+      if (avg > SPEECH_THR) {
         if (!hasSpoken) { hasSpoken = true; clearTimeout(noSpeechTimer); }
         clearTimeout(silenceTimer);
-        silenceTimer = setTimeout(() => { if (rec?.state === 'recording') rec.stop(); }, SILENCE_HOLD_MS);
+        silenceTimer = setTimeout(() => { if (rec?.state === 'recording') rec.stop(); }, SILENCE_MS);
       }
       monitorRAF = requestAnimationFrame(monitor);
     }
     monitor();
   } catch(e) {
-    setStatus('Microphone permission required');
-    console.error('mic error:', e);
+    setState('idle');
+    addMessage('ai', 'Microphone access required. Please allow mic and refresh.');
   }
 }
 
+// ── Barge-in: monitor mic while AI speaks ──
+let bargeinCtx = null, bargeinRAF = null;
+async function startBargein() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    bargeinCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = bargeinCtx.createMediaStreamSource(stream);
+    const an = bargeinCtx.createAnalyser();
+    an.fftSize = 256;
+    src.connect(an);
+    const fd = new Uint8Array(an.frequencyBinCount);
+    let consecutive = 0;
+    function check() {
+      an.getByteFrequencyData(fd);
+      const avg = fd.reduce((a,b)=>a+b,0)/fd.length;
+      if (avg > 18) { consecutive++; } else { consecutive = 0; }
+      if (consecutive >= 4) {
+        // User started speaking — interrupt AI
+        stopAI();
+        stream.getTracks().forEach(t=>t.stop());
+        try { bargeinCtx.close(); } catch(e) {}
+        bargeinCtx = null;
+        startListening();
+        return;
+      }
+      bargeinRAF = requestAnimationFrame(check);
+    }
+    check();
+    // clean up stream ref so we can stop it on barge-in
+    bargeinCtx._stream = stream;
+  } catch(e) {}
+}
+
+function stopBargein() {
+  cancelAnimationFrame(bargeinRAF);
+  if (bargeinCtx) {
+    if (bargeinCtx._stream) bargeinCtx._stream.getTracks().forEach(t=>t.stop());
+    try { bargeinCtx.close(); } catch(e) {}
+    bargeinCtx = null;
+  }
+}
+
+function stopAI() {
+  sharedAudio.pause();
+  sharedAudio.currentTime = 0;
+  isPlayingAI = false;
+  stopBargein();
+}
+
 function cleanupMonitor() {
-  if (monitorRAF) cancelAnimationFrame(monitorRAF);
-  clearTimeout(silenceTimer);
-  clearTimeout(noSpeechTimer);
+  cancelAnimationFrame(monitorRAF);
+  clearTimeout(silenceTimer); clearTimeout(noSpeechTimer);
   if (audioCtx) { try { audioCtx.close(); } catch(e) {} audioCtx = null; }
   analyser = null;
 }
 
-// ── Call API with one retry ──
-async function callConverse(b64) {
-  const body = JSON.stringify({ audio_base64: b64, history });
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const resp = await fetch(`${API}/converse`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        signal: AbortSignal.timeout(30000)
-      });
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => '');
-        throw new Error(`${resp.status}: ${errText.slice(0, 120)}`);
-      }
-      return await resp.json();
-    } catch(e) {
-      if (attempt === 0) {
-        setStatus('Reconnecting...');
-        await new Promise(r => setTimeout(r, 1500));
-      } else {
-        throw e;
-      }
-    }
-  }
-}
-
-// ── Process recorded audio ──
+// ── Process audio via SSE streaming endpoint ──
 async function process() {
-  if (!chunks.length) { setOrbState('idle'); setStatus('Ready to talk'); return; }
-  setOrbState('thinking');
-  setStatus('Thinking...');
+  if (!chunks.length) { setState('idle'); if (!userStopped) startListening(); return; }
+  setState('thinking');
 
   const blob = new Blob(chunks, { type: 'audio/webm' });
-  const b64 = await new Promise(res => {
-    const r = new FileReader();
-    r.onloadend = () => res(r.result.split(',')[1]);
-    r.readAsDataURL(blob);
-  });
+  const b64 = await blobToB64(blob);
 
   try {
-    const data = await callConverse(b64);
-    if (data.transcript) {
-      document.getElementById('transcriptPeek').textContent = data.transcript;
+    const resp = await fetch(`${API}/converse_stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio_base64: b64, history }),
+      signal: AbortSignal.timeout(45000)
+    });
+    if (!resp.ok) throw new Error(`${resp.status}`);
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(6)); } catch(e) { continue; }
+        await handleSSE(ev);
+      }
     }
-    if (data.history) history = data.history;
-    if (data.audio_base64 && !muted) {
-      await playAudio(data.audio_base64);
-    } else {
-      setOrbState('idle');
-      setStatus('Ready to talk');
-    }
-    if (active && !userStopped) setTimeout(() => start(), 300);
   } catch(e) {
-    console.error('converse error:', e);
-    setStatus(`Error: ${e.message.slice(0, 60)}`);
-    setOrbState('idle');
-    active = false;
-    setTimeout(() => {
-      if (!userStopped) { active = true; start(); }
-    }, 2000);
+    console.error('stream error:', e);
+    addMessage('ai', '⚠ Connection error. Trying again…');
+    setState('idle');
+    if (!userStopped) setTimeout(() => startListening(), 2000);
   }
 }
 
-// ── Play WAV audio ──
-function playAudio(b64) {
+async function handleSSE(ev) {
+  switch (ev.type) {
+    case 'transcript':
+      addMessage('user', ev.text);
+      setState('thinking');
+      break;
+    case 'response':
+      addMessage('ai', ev.text);
+      setState('speaking');
+      break;
+    case 'audio':
+      if (!muted && !userStopped) {
+        isPlayingAI = true;
+        startBargein();
+        await playAudioB64(ev.data);
+        isPlayingAI = false;
+        stopBargein();
+      }
+      break;
+    case 'done':
+      if (ev.history) history = ev.history;
+      setState('idle');
+      if (!userStopped) setTimeout(() => startListening(), 200);
+      break;
+    case 'error':
+      addMessage('ai', `⚠ ${ev.msg || 'Something went wrong'}`);
+      setState('idle');
+      if (!userStopped) setTimeout(() => startListening(), 2000);
+      break;
+  }
+}
+
+// ── Audio playback ──
+function playAudioB64(b64) {
   return new Promise(res => {
-    setOrbState('speaking');
-    setStatus('Speaking...');
     try {
       const bytes = atob(b64);
       const buf = new Uint8Array(bytes.length);
       for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
       const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
       sharedAudio.src = url;
-      sharedAudio.onended = () => {
-        URL.revokeObjectURL(url);
-        setOrbState('idle');
-        setStatus('Ready to talk');
-        res();
-      };
-      sharedAudio.onerror = (ev) => {
-        console.error('audio error:', ev);
-        URL.revokeObjectURL(url);
-        setOrbState('idle');
-        setStatus('Ready to talk');
-        res();
-      };
-      sharedAudio.play().catch(err => {
-        console.error('play() blocked:', err);
-        setOrbState('idle');
-        setStatus('Tap screen to enable audio');
-        res();
-      });
-    } catch(err) {
-      console.error('playAudio error:', err);
-      setOrbState('idle');
-      setStatus('Ready to talk');
-      res();
-    }
+      const cleanup = () => { URL.revokeObjectURL(url); res(); };
+      sharedAudio.onended = cleanup;
+      sharedAudio.onerror = cleanup;
+      sharedAudio.play().catch(cleanup);
+    } catch(e) { res(); }
+  });
+}
+
+// ── Helpers ──
+function blobToB64(blob) {
+  return new Promise(res => {
+    const r = new FileReader();
+    r.onloadend = () => res(r.result.split(',')[1]);
+    r.readAsDataURL(blob);
   });
 }
 </script>
