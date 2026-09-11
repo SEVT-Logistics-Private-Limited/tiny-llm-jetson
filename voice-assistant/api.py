@@ -243,7 +243,7 @@ def speak():
         return {"audio_base64": base64.b64encode(audio).decode()}
     except Exception as e:
         print(f"ERROR in /speak: {traceback.format_exc()}")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, "Internal server error")
 
 @app.post("/tts")
 def tts(req: TextReq):
@@ -252,7 +252,7 @@ def tts(req: TextReq):
         return {"audio_base64": base64.b64encode(audio).decode()}
     except Exception as e:
         print(f"ERROR in /tts: {traceback.format_exc()}")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, "Internal server error")
 
 @app.post("/converse")
 def converse(req: ConvReq):
@@ -285,7 +285,7 @@ def converse(req: ConvReq):
         raise
     except Exception as e:
         print(f"ERROR in /converse: {traceback.format_exc()}")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, "Internal server error")
 
 @app.post("/converse_stream")
 def converse_stream(req: ConvReq):
@@ -324,7 +324,7 @@ def converse_stream(req: ConvReq):
             yield _sse({"type": "done", "history": hist})
         except Exception as e:
             print(f"ERROR in /converse_stream: {traceback.format_exc()}")
-            yield _sse({"type": "error", "msg": str(e)[:200]})
+            yield _sse({"type": "error", "msg": "Request failed. Please try again."})
 
     return StreamingResponse(
         generate(),
@@ -353,4 +353,4 @@ def voice(req: AudioReq):
                 "audio_base64": base64.b64encode(audio).decode()}
     except Exception as e:
         print(f"ERROR in /voice: {traceback.format_exc()}")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, "Internal server error")
