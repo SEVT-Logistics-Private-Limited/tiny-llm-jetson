@@ -23,6 +23,10 @@ def _load_kb():
     global _embed_model, _chroma_client, _manuals_collection
     print("Loading manual knowledge base in background...")
     try:
+        import os as _os
+        # Use cached model only — never download from HuggingFace at runtime
+        _os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+        _os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
         from sentence_transformers import SentenceTransformer
         import chromadb
         em = SentenceTransformer("intfloat/multilingual-e5-small")
@@ -216,10 +220,16 @@ class TextReq(BaseModel):
 class AudioReq(BaseModel):
     audio_base64: str
 
+@app.get("/healthz")
+def healthz():
+    """Lightweight liveness probe — returns immediately without any I/O."""
+    return {"status": "ok"}
+
 @app.get("/")
 def health():
     ctx = get_context()
-    return {"status": "running", "version": "8.0", "time": ctx['time'], "date": ctx['date']}
+    kb = "loaded" if _manuals_collection is not None else "disabled"
+    return {"status": "running", "version": "9.0", "time": ctx['time'], "date": ctx['date'], "kb": kb}
 
 @app.get("/assistant")
 def assistant():
