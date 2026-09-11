@@ -93,9 +93,10 @@ INSTANT_RESPONSES = {
 }
 
 def check_instant(text, ctx):
-    t = text.lower().strip()
+    # Only match when the entire message IS the keyword (not substring)
+    t = text.strip().lower().rstrip('?.,!')
     for kw, fn in INSTANT_RESPONSES.items():
-        if kw in t:
+        if t == kw.lower():
             return fn(ctx)
     return None
 
@@ -191,7 +192,7 @@ def do_tts(text):
     for attempt in range(3):
         try:
             response = gemini_client.models.generate_content(
-                model="gemini-2.5-flash-preview-tts",
+                model="gemini-2.0-flash-preview-tts",
                 contents=text,
                 config=genai_types.GenerateContentConfig(
                     response_modalities=["AUDIO"],
