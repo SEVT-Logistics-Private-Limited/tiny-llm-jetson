@@ -500,13 +500,15 @@ async function greetUser() {
 
   addMessage('ai', greeting);
   setState('speaking');
+  let greetingPlayed = false;
   try {
     const r = await fetch(`${API}/tts`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({text: greeting}), signal: AbortSignal.timeout(20000)
     });
-    if (r.ok) { const d = await r.json(); await playAudioB64(d.audio_base64); }
+    if (r.ok) { const d = await r.json(); await playAudioB64(d.audio_base64); greetingPlayed = true; }
   } catch(e) { console.warn('greeting tts error:', e); }
+  if (!greetingPlayed && !userStopped) await speakWithBrowser(greeting);
   if (!userStopped) startListening();
 }
 
@@ -515,6 +517,7 @@ function endCall() {
   clearInterval(timerInterval);
   sharedAudio.pause(); sharedAudio.currentTime = 0;
   isPlayingAI = false;
+  try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(e) {}
   if (recognition) { try { recognition.abort(); } catch(e) {} recognition = null; }
   if (rec?.state === 'recording') rec.stop();
   cleanupMonitor();
@@ -758,6 +761,7 @@ async function readSSE(resp, textMode) {
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
+  const sseState = { gotAudio: false, lastResponse: '' };
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -768,22 +772,24 @@ async function readSSE(resp, textMode) {
       if (!line.startsWith('data: ')) continue;
       let ev;
       try { ev = JSON.parse(line.slice(6)); } catch(e) { continue; }
-      await handleSSE(ev, textMode);
+      await handleSSE(ev, textMode, sseState);
     }
   }
 }
 
-async function handleSSE(ev, textMode) {
+async function handleSSE(ev, textMode, sseState = {}) {
   switch (ev.type) {
     case 'transcript':
-      if (!textMode) addMessage('user', ev.text);  // textMode already added bubble
+      if (!textMode) addMessage('user', ev.text);
       setState('thinking');
       break;
     case 'response':
+      sseState.lastResponse = ev.text;
       addMessage('ai', ev.text);
       setState('speaking');
       break;
     case 'audio':
+      sseState.gotAudio = true;
       if (!muted && !userStopped) {
         isPlayingAI = true;
         startBargein();
@@ -794,6 +800,10 @@ async function handleSSE(ev, textMode) {
       break;
     case 'done':
       if (ev.history) history = ev.history;
+      // Gemini TTS failed silently — fall back to browser voice
+      if (sseState.lastResponse && !sseState.gotAudio && !muted && !userStopped) {
+        await speakWithBrowser(sseState.lastResponse);
+      }
       setState('idle');
       if (!userStopped) setTimeout(() => startListening(), 200);
       break;
@@ -850,6 +860,7 @@ function stopAI() {
   sharedAudio.currentTime = 0;
   isPlayingAI = false;
   stopBargein();
+  try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(e) {}
 }
 
 function cleanupMonitor() {
@@ -872,6 +883,36 @@ function playAudioB64(b64) {
       sharedAudio.onended = cleanup;
       sharedAudio.onerror = cleanup;
       sharedAudio.play().catch(cleanup);
+    } catch(e) { res(); }
+  });
+}
+
+// ── Browser TTS fallback (when Gemini TTS unavailable) ──
+function speakWithBrowser(text) {
+  return new Promise(res => {
+    try {
+      if (!window.speechSynthesis || !text) { res(); return; }
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'te-IN';
+      utter.rate = 0.92;
+      const voices = window.speechSynthesis.getVoices();
+      const v = voices.find(v => v.lang.startsWith('te'))
+             || voices.find(v => v.lang === 'hi-IN')
+             || voices.find(v => v.lang.startsWith('en-IN'))
+             || null;
+      if (v) utter.voice = v;
+      utter.onend = res;
+      utter.onerror = res;
+      window.speechSynthesis.speak(utter);
+      // Chrome pauses synthesis after 15s — keep it alive
+      const keepAlive = setInterval(() => {
+        if (!window.speechSynthesis.speaking) { clearInterval(keepAlive); return; }
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }, 10000);
+      utter.onend = () => { clearInterval(keepAlive); res(); };
+      utter.onerror = () => { clearInterval(keepAlive); res(); };
     } catch(e) { res(); }
   });
 }
