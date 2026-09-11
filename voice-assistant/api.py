@@ -1,9 +1,9 @@
-import base64, requests, os, re, io, wave, traceback
+import base64, requests, os, re, io, wave, traceback, json
 from google import genai as google_genai
 from google.genai import types as genai_types
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -203,7 +203,7 @@ def do_tts(text):
     pcm_data = response.candidates[0].content.parts[0].inline_data.data
     return _pcm_to_wav(pcm_data)
 
-app = FastAPI(title="Telugu Voice AI", version="8.0")
+app = FastAPI(title="Telugu Voice AI", version="10.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class Msg(BaseModel):
@@ -229,7 +229,7 @@ def healthz():
 def health():
     ctx = get_context()
     kb = "loaded" if _manuals_collection is not None else "disabled"
-    return {"status": "running", "version": "9.0", "time": ctx['time'], "date": ctx['date'], "kb": kb}
+    return {"status": "running", "version": "10.0", "time": ctx['time'], "date": ctx['date'], "kb": kb}
 
 @app.get("/assistant")
 def assistant():
@@ -286,6 +286,51 @@ def converse(req: ConvReq):
     except Exception as e:
         print(f"ERROR in /converse: {traceback.format_exc()}")
         raise HTTPException(500, str(e))
+
+@app.post("/converse_stream")
+def converse_stream(req: ConvReq):
+    """SSE streaming endpoint: emits transcript → response text → audio in order."""
+    def _sse(obj):
+        return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+    def generate():
+        try:
+            ctx = get_context()
+            user_text = gemini_stt(base64.b64decode(req.audio_base64))
+            if not user_text.strip():
+                yield _sse({"type": "error", "msg": "Empty transcript"})
+                return
+
+            yield _sse({"type": "transcript", "text": user_text})
+
+            instant = check_instant(user_text, ctx)
+            response_text = instant
+            if not instant:
+                manual_ctx = retrieve_manual_context(user_text)
+                msgs = [{"role": "system", "content": build_system(ctx, manual_ctx)}]
+                for m in (req.history or [])[-8:]:
+                    msgs.append({"role": m.role, "content": m.content})
+                msgs.append({"role": "user", "content": user_text})
+                response_text = telugu_llm(msgs)
+
+            yield _sse({"type": "response", "text": response_text})
+
+            audio = do_tts(response_text)
+            yield _sse({"type": "audio", "data": base64.b64encode(audio).decode()})
+
+            hist = list(req.history or [])
+            hist += [{"role": "user", "content": user_text},
+                     {"role": "assistant", "content": response_text}]
+            yield _sse({"type": "done", "history": hist})
+        except Exception as e:
+            print(f"ERROR in /converse_stream: {traceback.format_exc()}")
+            yield _sse({"type": "error", "msg": str(e)[:200]})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
+    )
 
 @app.post("/voice")
 def voice(req: AudioReq):
