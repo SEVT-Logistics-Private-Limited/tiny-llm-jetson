@@ -1,4 +1,4 @@
-import base64, requests, os, re, io, wave, traceback, json
+import base64, requests, os, re, io, wave, traceback, json, time
 from google import genai as google_genai
 from google.genai import types as genai_types
 from fastapi import FastAPI, HTTPException
@@ -145,12 +145,13 @@ def build_system(ctx, manual_context=None):
         )
     base += (
         "\nనియమాలు:\n"
-        "1. ఎల్లప్పుడూ శుద్ధ తెలుగులో మాత్రమే మాట్లాడు\n"
-        "2. ఇంగ్లీష్ పదాలు వాడకు\n"
-        "3. *, /, #, _ లాంటి గుర్తులు వాడకు\n"
-        "4. జవాబు చాలా చిన్నగా ఉండాలి - 1-2 వాక్యాలు మాత్రమే\n"
-        "5. స్నేహంగా, వేడుకగా, సహజంగా మాట్లాడు - ఒక స్నేహితుడిలా\n"
-        "6. సంక్షిప్తంగా, స్పష్టంగా చెప్పు"
+        "1. ఎల్లప్పుడూ శుద్ధ తెలుగులో మాత్రమే మాట్లాడు - ఒక్క ఇంగ్లీష్ పదం కూడా వాడకు\n"
+        "2. *, /, #, _ లాంటి గుర్తులు వాడకు\n"
+        "3. జవాబు చాలా చిన్నగా ఉండాలి - 1-2 వాక్యాలు మాత్రమే\n"
+        "4. స్నేహంగా, వేడుకగా, సహజంగా మాట్లాడు - ఒక స్నేహితుడిలా\n"
+        "5. సంక్షిప్తంగా, స్పష్టంగా చెప్పు\n"
+        "6. క్రికెట్ స్కోర్లు, వాతావరణం, వార్తలు లాంటి real-time సమాచారం అడిగితే తెలుగులో చెప్పు: 'అది ఇప్పుడు నాకు తెలియదు మిత్రమా, వేరే ఏదైనా అడగండి'\n"
+        "7. తెలియని విషయాల గురించి తెలుగులో చెప్పు: 'ఆ విషయం నాకు తెలియదు, వేరే ఏమైనా సహాయం చేయనా?'"
     )
     return base
 
@@ -184,24 +185,33 @@ def _pcm_to_wav(pcm_data, rate=24000):
     return buf.getvalue()
 
 def do_tts(text):
-    """Gemini TTS — returns WAV bytes."""
+    """Gemini TTS — returns WAV bytes. Retries up to 3 times on transient failure."""
     text = text[:500]
-    response = gemini_client.models.generate_content(
-        model="gemini-2.5-flash-preview-tts",
-        contents=text,
-        config=genai_types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=genai_types.SpeechConfig(
-                voice_config=genai_types.VoiceConfig(
-                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                        voice_name="Aoede"
+    last_exc = None
+    for attempt in range(3):
+        try:
+            response = gemini_client.models.generate_content(
+                model="gemini-2.5-flash-preview-tts",
+                contents=text,
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=genai_types.SpeechConfig(
+                        voice_config=genai_types.VoiceConfig(
+                            prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                                voice_name="Aoede"
+                            )
+                        )
                     )
                 )
             )
-        )
-    )
-    pcm_data = response.candidates[0].content.parts[0].inline_data.data
-    return _pcm_to_wav(pcm_data)
+            pcm_data = response.candidates[0].content.parts[0].inline_data.data
+            return _pcm_to_wav(pcm_data)
+        except Exception as e:
+            last_exc = e
+            print(f"TTS attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                time.sleep(1)
+    raise last_exc
 
 app = FastAPI(title="Telugu Voice AI", version="10.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -319,8 +329,11 @@ def converse_stream(req: ConvReq):
 
             yield _sse({"type": "response", "text": response_text})
 
-            audio = do_tts(response_text)
-            yield _sse({"type": "audio", "data": base64.b64encode(audio).decode()})
+            try:
+                audio = do_tts(response_text)
+                yield _sse({"type": "audio", "data": base64.b64encode(audio).decode()})
+            except Exception:
+                print(f"TTS failed in /converse_stream: {traceback.format_exc()}")
 
             hist = list(req.history or [])
             hist += [{"role": "user", "content": user_text},
@@ -364,8 +377,11 @@ def converse_text_stream(req: TextConvReq):
 
             yield _sse({"type": "response", "text": response_text})
 
-            audio = do_tts(response_text)
-            yield _sse({"type": "audio", "data": base64.b64encode(audio).decode()})
+            try:
+                audio = do_tts(response_text)
+                yield _sse({"type": "audio", "data": base64.b64encode(audio).decode()})
+            except Exception:
+                print(f"TTS failed in /converse_text_stream: {traceback.format_exc()}")
 
             hist = list(req.history or [])
             hist += [{"role": "user", "content": user_text},
