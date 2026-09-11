@@ -220,6 +220,10 @@ class TextReq(BaseModel):
 class AudioReq(BaseModel):
     audio_base64: str
 
+class TextConvReq(BaseModel):
+    text: str
+    history: Optional[List[Msg]] = []
+
 @app.get("/healthz")
 def healthz():
     """Lightweight liveness probe — returns immediately without any I/O."""
@@ -324,6 +328,51 @@ def converse_stream(req: ConvReq):
             yield _sse({"type": "done", "history": hist})
         except Exception as e:
             print(f"ERROR in /converse_stream: {traceback.format_exc()}")
+            yield _sse({"type": "error", "msg": "Request failed. Please try again."})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
+    )
+
+@app.post("/converse_text_stream")
+def converse_text_stream(req: TextConvReq):
+    """SSE streaming for pre-transcribed text — skips STT for lower latency."""
+    def _sse(obj):
+        return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+    def generate():
+        try:
+            ctx = get_context()
+            user_text = req.text.strip()
+            if not user_text:
+                yield _sse({"type": "error", "msg": "Empty text"})
+                return
+
+            yield _sse({"type": "transcript", "text": user_text})
+
+            instant = check_instant(user_text, ctx)
+            response_text = instant
+            if not instant:
+                manual_ctx = retrieve_manual_context(user_text)
+                msgs = [{"role": "system", "content": build_system(ctx, manual_ctx)}]
+                for m in (req.history or [])[-8:]:
+                    msgs.append({"role": m.role, "content": m.content})
+                msgs.append({"role": "user", "content": user_text})
+                response_text = telugu_llm(msgs)
+
+            yield _sse({"type": "response", "text": response_text})
+
+            audio = do_tts(response_text)
+            yield _sse({"type": "audio", "data": base64.b64encode(audio).decode()})
+
+            hist = list(req.history or [])
+            hist += [{"role": "user", "content": user_text},
+                     {"role": "assistant", "content": response_text}]
+            yield _sse({"type": "done", "history": hist})
+        except Exception as e:
+            print(f"ERROR in /converse_text_stream: {traceback.format_exc()}")
             yield _sse({"type": "error", "msg": "Request failed. Please try again."})
 
     return StreamingResponse(

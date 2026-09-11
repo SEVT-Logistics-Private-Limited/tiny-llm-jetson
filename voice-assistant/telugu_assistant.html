@@ -357,6 +357,7 @@ const API = "https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontai
 const VALID_EMAIL = "yodhakit@gmail.com";
 const VALID_PASS  = "Yodhakit";
 const N_BARS = 9;
+const HAS_STT = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
 // ── Auth ──
 function doLogin() {
@@ -429,8 +430,9 @@ function unlockAudio() {
 }
 
 // ── State ──
-let active = false, muted = false, userStopped = false;
+let muted = false, userStopped = false;
 let history = [];
+let recognition = null;
 let rec = null, chunks = [];
 let audioCtx = null, analyser = null;
 let silenceTimer = null, noSpeechTimer = null, monitorRAF = null;
@@ -486,16 +488,15 @@ function startCall() {
   callSeconds = 0; updateTimer();
   timerInterval = setInterval(() => { callSeconds++; updateTimer(); }, 1000);
   setState('idle');
-  // AI greets first
   greetUser();
 }
 
 async function greetUser() {
-  const ctx = getCtx();
+  const h = new Date().getHours();
   let greeting = "నమస్కారం! నేను యోధను. చెప్పండి, మీకు ఎలా సహాయం చేయగలను?";
-  if (ctx.hour < 12) greeting = "శుభోదయం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?";
-  else if (ctx.hour < 17) greeting = "శుభ మధ్యాహ్నం! నేను యోధను. చెప్పండి.";
-  else if (ctx.hour < 21) greeting = "శుభ సాయంత్రం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?";
+  if (h < 12) greeting = "శుభోదయం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?";
+  else if (h < 17) greeting = "శుభ మధ్యాహ్నం! నేను యోధను. చెప్పండి.";
+  else if (h < 21) greeting = "శుభ సాయంత్రం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?";
 
   addMessage('ai', greeting);
   setState('speaking');
@@ -514,8 +515,10 @@ function endCall() {
   clearInterval(timerInterval);
   sharedAudio.pause(); sharedAudio.currentTime = 0;
   isPlayingAI = false;
+  if (recognition) { try { recognition.abort(); } catch(e) {} recognition = null; }
   if (rec?.state === 'recording') rec.stop();
   cleanupMonitor();
+  stopBargein();
   cancelAnimationFrame(waveRAF);
   history = [];
   setState('idle');
@@ -540,15 +543,16 @@ function updateTimer() {
   document.getElementById('callTimer').textContent = `${m}:${s}`;
 }
 
-// ── Context ──
-function getCtx() { return {hour: new Date().getHours()}; }
-
 // ── UI state ──
 function setState(state) {
   const dot = document.getElementById('stateDot');
-  const lbl = document.getElementById('stateLabel');
   dot.className = 'state-dot' + (state !== 'idle' ? ' ' + state : '');
-  lbl.textContent = {listening:'Listening…', thinking:'Thinking…', speaking:'Speaking…', idle:'Ready to talk'}[state] || 'Ready to talk';
+  if (state !== 'listening') {
+    document.getElementById('stateLabel').textContent =
+      {thinking:'Thinking…', speaking:'Speaking…', idle:'Ready to talk'}[state] || 'Ready to talk';
+  } else {
+    document.getElementById('stateLabel').textContent = 'Listening…';
+  }
   animateBars(state);
 }
 
@@ -568,43 +572,120 @@ const bars = () => document.querySelectorAll('.wave-bar');
 
 function animateBars(state) {
   cancelAnimationFrame(waveRAF);
-  if (state === 'listening') return; // mic monitor drives bars live
+  const speeds  = {speaking: 0.18, listening: 0.12, thinking: 0.06, idle: 0.02};
+  const colors  = {speaking: '#60a8e0', listening: '#88c060', thinking: '#f0b840', idle: '#2a3c28'};
   function frame() {
     waveRAF = requestAnimationFrame(frame);
-    wavePhase += state === 'speaking' ? 0.18 : state === 'thinking' ? 0.06 : 0.02;
+    wavePhase += speeds[state] || 0.02;
     bars().forEach((b, i) => {
       let h;
       if (state === 'speaking') {
         h = 8 + 22 * Math.abs(Math.sin(wavePhase + i * 0.7)) + 10 * Math.abs(Math.sin(wavePhase * 1.7 + i * 0.4));
+      } else if (state === 'listening') {
+        h = 6 + 18 * Math.abs(Math.sin(wavePhase + i * 0.65)) + 6 * Math.abs(Math.sin(wavePhase * 1.3 + i * 0.4));
       } else if (state === 'thinking') {
         h = 4 + 8 * Math.abs(Math.sin(wavePhase + i * 0.5));
       } else {
         h = 4 + 2 * Math.abs(Math.sin(wavePhase + i * 0.3));
       }
       b.style.height = Math.max(4, h) + 'px';
-      b.style.background = state === 'listening' ? '#88c060' : state === 'speaking' ? '#60a8e0' : state === 'thinking' ? '#f0b840' : '#2a3c28';
+      b.style.background = colors[state] || '#2a3c28';
     });
   }
   frame();
 }
 
-function updateBarsFromAudio(freqData) {
-  const bl = bars();
-  const step = Math.floor(freqData.length / N_BARS);
-  bl.forEach((b, i) => {
-    const bucket = freqData.slice(i * step, (i + 1) * step);
-    const avg = bucket.reduce((a, v) => a + v, 0) / bucket.length;
-    const h = 4 + (avg / 255) * 44;
-    b.style.height = Math.max(4, h) + 'px';
-    b.style.background = '#88c060';
-  });
-}
-
-// ── Listening / VAD ──
+// ── Listening — dispatches to STT or audio fallback ──
 async function startListening() {
   if (userStopped) return;
-  chunks = []; hasSpoken = false; endedByTimeout = false;
   setState('listening');
+  if (HAS_STT) {
+    startSTT();
+  } else {
+    startAudioRecording();
+  }
+}
+
+// ── Web Speech API STT (primary path) ──
+function startSTT() {
+  if (userStopped) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'te-IN';
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  let finalText = '';
+  let sttError = null;
+
+  recognition.onresult = (event) => {
+    finalText = '';
+    let interim = '';
+    for (let i = 0; i < event.results.length; i++) {
+      if (event.results[i].isFinal) finalText += event.results[i][0].transcript;
+      else interim += event.results[i][0].transcript;
+    }
+    // Show live interim text in the status label
+    const display = finalText || interim;
+    if (display) {
+      const lbl = document.getElementById('stateLabel');
+      lbl.textContent = display.length > 55 ? '…' + display.slice(-54) : display;
+    }
+  };
+
+  recognition.onerror = (e) => { sttError = e.error; };
+
+  recognition.onend = () => {
+    recognition = null;
+    if (userStopped) return;
+    if (sttError === 'not-allowed') {
+      setState('idle');
+      addMessage('ai', 'Microphone access required. Please allow mic and refresh.');
+      return;
+    }
+    if (finalText.trim()) {
+      processText(finalText.trim());
+    } else {
+      // no-speech or empty — restart
+      setState('listening');
+      setTimeout(() => { if (!userStopped) startSTT(); }, 300);
+    }
+  };
+
+  try { recognition.start(); } catch(e) {
+    recognition = null;
+    setTimeout(() => { if (!userStopped) startSTT(); }, 500);
+  }
+}
+
+// ── Text pipeline — LLM + TTS only, no STT ──
+async function processText(text) {
+  if (!text.trim() || userStopped) { if (!userStopped) startListening(); return; }
+  addMessage('user', text);
+  setState('thinking');
+
+  try {
+    const resp = await fetch(`${API}/converse_text_stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, history }),
+      signal: AbortSignal.timeout(45000)
+    });
+    if (!resp.ok) throw new Error(`${resp.status}`);
+    await readSSE(resp, true);
+  } catch(e) {
+    console.error('processText error:', e);
+    addMessage('ai', '⚠ Connection error. Trying again…');
+    setState('idle');
+    if (!userStopped) setTimeout(() => startListening(), 2000);
+  }
+}
+
+// ── Audio fallback (browsers without Web Speech API) ──
+async function startAudioRecording() {
+  if (userStopped) return;
+  chunks = []; hasSpoken = false; endedByTimeout = false;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     rec = new MediaRecorder(stream);
@@ -612,10 +693,8 @@ async function startListening() {
     rec.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
       cleanupMonitor();
-      if (endedByTimeout || userStopped) {
-        setState('idle'); return;
-      }
-      process();
+      if (endedByTimeout || userStopped) { setState('idle'); return; }
+      processAudio();
     };
     rec.start(100);
 
@@ -626,23 +705,18 @@ async function startListening() {
     src.connect(analyser);
     const fd = new Uint8Array(analyser.frequencyBinCount);
 
-    const SPEECH_THR = 12;
-    const SILENCE_MS = 1100;
-    const NO_SPEECH_MS = 9000;
-
     noSpeechTimer = setTimeout(() => {
       if (!hasSpoken) { endedByTimeout = true; if (rec?.state === 'recording') rec.stop(); }
-    }, NO_SPEECH_MS);
+    }, 9000);
 
     function monitor() {
       if (!analyser) return;
       analyser.getByteFrequencyData(fd);
-      updateBarsFromAudio(fd);
-      const avg = fd.reduce((a, b) => a + b, 0) / fd.length;
-      if (avg > SPEECH_THR) {
+      const avg = fd.reduce((a, v) => a + v, 0) / fd.length;
+      if (avg > 12) {
         if (!hasSpoken) { hasSpoken = true; clearTimeout(noSpeechTimer); }
         clearTimeout(silenceTimer);
-        silenceTimer = setTimeout(() => { if (rec?.state === 'recording') rec.stop(); }, SILENCE_MS);
+        silenceTimer = setTimeout(() => { if (rec?.state === 'recording') rec.stop(); }, 1100);
       }
       monitorRAF = requestAnimationFrame(monitor);
     }
@@ -653,70 +727,15 @@ async function startListening() {
   }
 }
 
-// ── Barge-in: monitor mic while AI speaks ──
-let bargeinCtx = null, bargeinRAF = null;
-async function startBargein() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    bargeinCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const src = bargeinCtx.createMediaStreamSource(stream);
-    const an = bargeinCtx.createAnalyser();
-    an.fftSize = 256;
-    src.connect(an);
-    const fd = new Uint8Array(an.frequencyBinCount);
-    let consecutive = 0;
-    function check() {
-      an.getByteFrequencyData(fd);
-      const avg = fd.reduce((a,b)=>a+b,0)/fd.length;
-      if (avg > 18) { consecutive++; } else { consecutive = 0; }
-      if (consecutive >= 4) {
-        // User started speaking — interrupt AI
-        stopAI();
-        stream.getTracks().forEach(t=>t.stop());
-        try { bargeinCtx.close(); } catch(e) {}
-        bargeinCtx = null;
-        startListening();
-        return;
-      }
-      bargeinRAF = requestAnimationFrame(check);
-    }
-    check();
-    // clean up stream ref so we can stop it on barge-in
-    bargeinCtx._stream = stream;
-  } catch(e) {}
-}
-
-function stopBargein() {
-  cancelAnimationFrame(bargeinRAF);
-  if (bargeinCtx) {
-    if (bargeinCtx._stream) bargeinCtx._stream.getTracks().forEach(t=>t.stop());
-    try { bargeinCtx.close(); } catch(e) {}
-    bargeinCtx = null;
-  }
-}
-
-function stopAI() {
-  sharedAudio.pause();
-  sharedAudio.currentTime = 0;
-  isPlayingAI = false;
-  stopBargein();
-}
-
-function cleanupMonitor() {
-  cancelAnimationFrame(monitorRAF);
-  clearTimeout(silenceTimer); clearTimeout(noSpeechTimer);
-  if (audioCtx) { try { audioCtx.close(); } catch(e) {} audioCtx = null; }
-  analyser = null;
-}
-
-// ── Process audio via SSE streaming endpoint ──
-async function process() {
+async function processAudio() {
   if (!chunks.length) { setState('idle'); if (!userStopped) startListening(); return; }
   setState('thinking');
-
   const blob = new Blob(chunks, { type: 'audio/webm' });
-  const b64 = await blobToB64(blob);
-
+  const b64 = await new Promise(res => {
+    const r = new FileReader();
+    r.onloadend = () => res(r.result.split(',')[1]);
+    r.readAsDataURL(blob);
+  });
   try {
     const resp = await fetch(`${API}/converse_stream`, {
       method: 'POST',
@@ -725,36 +744,39 @@ async function process() {
       signal: AbortSignal.timeout(45000)
     });
     if (!resp.ok) throw new Error(`${resp.status}`);
-
-    const reader = resp.body.getReader();
-    const dec = new TextDecoder();
-    let buf = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop() || '';
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        let ev;
-        try { ev = JSON.parse(line.slice(6)); } catch(e) { continue; }
-        await handleSSE(ev);
-      }
-    }
+    await readSSE(resp, false);
   } catch(e) {
-    console.error('stream error:', e);
+    console.error('processAudio error:', e);
     addMessage('ai', '⚠ Connection error. Trying again…');
     setState('idle');
     if (!userStopped) setTimeout(() => startListening(), 2000);
   }
 }
 
-async function handleSSE(ev) {
+// ── SSE reader (shared by both pipelines) ──
+async function readSSE(resp, textMode) {
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      let ev;
+      try { ev = JSON.parse(line.slice(6)); } catch(e) { continue; }
+      await handleSSE(ev, textMode);
+    }
+  }
+}
+
+async function handleSSE(ev, textMode) {
   switch (ev.type) {
     case 'transcript':
-      addMessage('user', ev.text);
+      if (!textMode) addMessage('user', ev.text);  // textMode already added bubble
       setState('thinking');
       break;
     case 'response':
@@ -783,6 +805,60 @@ async function handleSSE(ev) {
   }
 }
 
+// ── Barge-in ──
+let bargeinCtx = null, bargeinRAF = null;
+async function startBargein() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    bargeinCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = bargeinCtx.createMediaStreamSource(stream);
+    const an = bargeinCtx.createAnalyser();
+    an.fftSize = 256;
+    src.connect(an);
+    const fd = new Uint8Array(an.frequencyBinCount);
+    let consecutive = 0;
+    function check() {
+      an.getByteFrequencyData(fd);
+      const avg = fd.reduce((a,b)=>a+b,0)/fd.length;
+      consecutive = avg > 18 ? consecutive + 1 : 0;
+      if (consecutive >= 4) {
+        stopAI();
+        stream.getTracks().forEach(t=>t.stop());
+        try { bargeinCtx.close(); } catch(e) {}
+        bargeinCtx = null;
+        startListening();
+        return;
+      }
+      bargeinRAF = requestAnimationFrame(check);
+    }
+    check();
+    bargeinCtx._stream = stream;
+  } catch(e) {}
+}
+
+function stopBargein() {
+  cancelAnimationFrame(bargeinRAF);
+  if (bargeinCtx) {
+    if (bargeinCtx._stream) bargeinCtx._stream.getTracks().forEach(t=>t.stop());
+    try { bargeinCtx.close(); } catch(e) {}
+    bargeinCtx = null;
+  }
+}
+
+function stopAI() {
+  sharedAudio.pause();
+  sharedAudio.currentTime = 0;
+  isPlayingAI = false;
+  stopBargein();
+}
+
+function cleanupMonitor() {
+  cancelAnimationFrame(monitorRAF);
+  clearTimeout(silenceTimer); clearTimeout(noSpeechTimer);
+  if (audioCtx) { try { audioCtx.close(); } catch(e) {} audioCtx = null; }
+  analyser = null;
+}
+
 // ── Audio playback ──
 function playAudioB64(b64) {
   return new Promise(res => {
@@ -797,15 +873,6 @@ function playAudioB64(b64) {
       sharedAudio.onerror = cleanup;
       sharedAudio.play().catch(cleanup);
     } catch(e) { res(); }
-  });
-}
-
-// ── Helpers ──
-function blobToB64(blob) {
-  return new Promise(res => {
-    const r = new FileReader();
-    r.onloadend = () => res(r.result.split(',')[1]);
-    r.readAsDataURL(blob);
   });
 }
 </script>
