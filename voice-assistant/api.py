@@ -183,7 +183,7 @@ def do_tts(text):
     """Gemini TTS — returns WAV bytes."""
     text = text[:500]
     response = gemini_client.models.generate_content(
-        model="gemini-2.0-flash-preview-tts",
+        model="gemini-2.5-flash-preview-tts",
         contents=text,
         config=genai_types.GenerateContentConfig(
             response_modalities=["AUDIO"],
