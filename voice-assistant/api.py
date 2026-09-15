@@ -15,6 +15,9 @@ GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 
 gemini_client = google_genai.Client(api_key=GEMINI_KEY)
 
+# Ordered fallback chain — first model that returns non-null text wins
+LLM_MODELS = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
+
 import threading
 
 _embed_model = None
@@ -44,14 +47,39 @@ def _load_kb():
 threading.Thread(target=_load_kb, daemon=True).start()
 
 
+def _llm_call_with_fallback(contents, config, context_label="llm"):
+    """Call generate_content with model fallback. Returns (text, model_used) or (None, None)."""
+    for model in LLM_MODELS:
+        try:
+            resp = gemini_client.models.generate_content(
+                model=model, contents=contents, config=config
+            )
+            try:
+                txt = resp.text
+            except Exception:
+                txt = None
+            if txt:
+                return txt, model
+            # Diagnose null response
+            try:
+                n = len(resp.candidates) if resp.candidates else 0
+                reason = str(resp.candidates[0].finish_reason) if n else "no_candidates"
+                print(f"{context_label}: null text (model={model}, candidates={n}, finish_reason={reason})")
+            except Exception:
+                print(f"{context_label}: null text (model={model}, could not inspect candidates)")
+        except Exception as e:
+            print(f"{context_label}: error (model={model}, {type(e).__name__}): {e}")
+    return None, None
+
+
 def gemini_translate(text, source_lang, target_lang):
     prompt = f"Translate the following text from {source_lang} to {target_lang}. Return only the translated text, no explanations.\n\nText: {text}"
-    response = gemini_client.models.generate_content(
-        model="gemini-3.6-flash",
+    txt, _ = _llm_call_with_fallback(
         contents=prompt,
-        config=genai_types.GenerateContentConfig(max_output_tokens=500)
+        config=genai_types.GenerateContentConfig(max_output_tokens=500),
+        context_label="gemini_translate"
     )
-    return response.text.strip()
+    return txt.strip() if txt else text
 
 def retrieve_manual_context(question_te, distance_threshold=0.35):
     if _manuals_collection is None:
@@ -102,27 +130,23 @@ def check_instant(text, ctx):
     return None
 
 def gemini_stt(audio_bytes):
-    """Transcribe Telugu audio using Gemini."""
-    response = gemini_client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=[
-            genai_types.Content(parts=[
-                genai_types.Part(
-                    inline_data=genai_types.Blob(
-                        mime_type="audio/webm",
-                        data=audio_bytes
-                    )
-                ),
-                genai_types.Part(
-                    text="Transcribe exactly what is spoken in Telugu in this audio. Return only the transcribed Telugu text, no explanations or translations."
-                )
-            ])
-        ]
+    """Transcribe Telugu audio using Gemini with model fallback."""
+    contents = [
+        genai_types.Content(parts=[
+            genai_types.Part(
+                inline_data=genai_types.Blob(mime_type="audio/webm", data=audio_bytes)
+            ),
+            genai_types.Part(
+                text="Transcribe exactly what is spoken in Telugu in this audio. Return only the transcribed Telugu text, no explanations or translations."
+            )
+        ])
+    ]
+    txt, _ = _llm_call_with_fallback(
+        contents=contents,
+        config=genai_types.GenerateContentConfig(max_output_tokens=200),
+        context_label="gemini_stt"
     )
-    try:
-        return response.text.strip()
-    except Exception:
-        return ""
+    return txt.strip() if txt else ""
 
 def clean_for_tts(text):
     text = re.sub(r'[*/#_+|\[\]{}<>^~`\\]', '', text)
@@ -169,20 +193,25 @@ def telugu_llm(messages):
             role=role,
             parts=[genai_types.Part(text=m["content"])]
         ))
-    response = gemini_client.models.generate_content(
-        model="gemini-3.6-flash",
+    raw, model_used = _llm_call_with_fallback(
         contents=contents,
         config=genai_types.GenerateContentConfig(
             system_instruction=system_msg,
             max_output_tokens=200
-        )
+        ),
+        context_label="telugu_llm"
     )
-    # response.text raises ValueError when safety filters block or response is empty
-    try:
-        raw = response.text
-    except Exception:
-        raw = None
-    return clean_for_tts(raw) if raw else "క్షమించాలి, మళ్ళీ అడగగలరా?"
+    if raw:
+        print(f"telugu_llm: response from model={model_used}")
+        return clean_for_tts(raw)
+    return "క్షమించాలి, మళ్ళీ అడగగలరా?"
+
+def _gtts_generate(text, tld):
+    tts = gTTS(text=text, lang='te', slow=False, tld=tld)
+    buf = io.BytesIO()
+    tts.write_to_fp(buf)
+    buf.seek(0)
+    return buf.read()
 
 def _gtts_generate(text, tld):
     tts = gTTS(text=text, lang='te', slow=False, tld=tld)
@@ -252,21 +281,38 @@ def debug():
     """Diagnostic endpoint — tests LLM, Gemini TTS, and gTTS independently."""
     result = {}
 
-    # Test LLM
-    try:
-        resp = gemini_client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents="Say 'ok' in Telugu (one word only).",
-            config=genai_types.GenerateContentConfig(max_output_tokens=10)
-        )
+    # Test each LLM model independently
+    llm_results = {}
+    for model in LLM_MODELS:
         try:
-            txt = resp.text
+            resp = gemini_client.models.generate_content(
+                model=model,
+                contents="Say 'ok' in Telugu (one word only).",
+                config=genai_types.GenerateContentConfig(max_output_tokens=10)
+            )
+            try:
+                txt = resp.text
+            except Exception as e:
+                txt = None
+            entry = {"ok": bool(txt), "response": txt}
+            if not txt:
+                try:
+                    n = len(resp.candidates) if resp.candidates else 0
+                    entry["candidates"] = n
+                    if n:
+                        entry["finish_reason"] = str(resp.candidates[0].finish_reason)
+                    if hasattr(resp, 'prompt_feedback') and resp.prompt_feedback:
+                        entry["prompt_feedback"] = str(resp.prompt_feedback)
+                except Exception:
+                    entry["diag_error"] = "could not inspect candidates"
+            llm_results[model] = entry
         except Exception as e:
-            txt = None
-            result["llm_text_error"] = type(e).__name__
-        result["llm"] = {"ok": txt is not None, "response": txt}
-    except Exception as e:
-        result["llm"] = {"ok": False, "error": type(e).__name__}
+            llm_results[model] = {"ok": False, "error": type(e).__name__}
+    result["llm_models"] = llm_results
+    # Summary: first working model
+    working = next((m for m, v in llm_results.items() if v.get("ok")), None)
+    result["llm"] = {"ok": working is not None, "active_model": working,
+                     "response": llm_results[working]["response"] if working else None}
 
     # Test Gemini TTS models (informational only — not in active production path)
     for model in ["gemini-2.5-flash-preview-tts", "gemini-2.0-flash-preview-tts"]:
