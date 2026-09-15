@@ -1,4 +1,4 @@
-import base64, requests, os, re, io, traceback, json, time
+import base64, requests, os, re, io, traceback, json, time, wave
 from google import genai as google_genai
 from google.genai import types as genai_types
 from gtts import gTTS
@@ -180,14 +180,61 @@ def telugu_llm(messages):
         raw = None
     return clean_for_tts(raw) if raw else "క్షమించాలి, మళ్ళీ అడగగలరా?"
 
-def do_tts(text):
-    """TTS via gTTS (Google Translate TTS). Returns MP3 bytes."""
-    text = text[:500]
-    tts = gTTS(text=text, lang='te', slow=False, tld='co.in')
+_GEMINI_TTS_MODELS = ["gemini-2.5-flash-preview-tts", "gemini-2.0-flash-preview-tts"]
+_GEMINI_TTS_VOICE = "Kore"  # Warm natural voice with Telugu support
+
+def _pcm_to_wav(pcm_bytes, sample_rate=24000, channels=1, sample_width=2):
     buf = io.BytesIO()
-    tts.write_to_fp(buf)
+    with wave.open(buf, 'wb') as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sample_width)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm_bytes)
     buf.seek(0)
     return buf.read()
+
+def do_tts(text):
+    """TTS: Gemini native voice (natural) → gTTS fallback. Returns (bytes, content_type)."""
+    text = text[:500]
+
+    for model in _GEMINI_TTS_MODELS:
+        try:
+            resp = gemini_client.models.generate_content(
+                model=model,
+                contents=text,
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=genai_types.SpeechConfig(
+                        voice_config=genai_types.VoiceConfig(
+                            prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                                voice_name=_GEMINI_TTS_VOICE
+                            )
+                        )
+                    )
+                )
+            )
+            pcm = resp.candidates[0].content.parts[0].inline_data.data
+            if isinstance(pcm, str):
+                pcm = base64.b64decode(pcm)
+            if not pcm:
+                raise ValueError("Empty PCM data from Gemini TTS")
+            return _pcm_to_wav(pcm), "audio/wav"
+        except Exception as e:
+            print(f"Gemini TTS ({model}) failed ({type(e).__name__}): {e}")
+
+    # Fallback: gTTS
+    try:
+        tts = gTTS(text=text, lang='te', slow=False, tld='co.in')
+        buf = io.BytesIO()
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        data = buf.read()
+        if not data:
+            raise ValueError("Empty gTTS output")
+        return data, "audio/mpeg"
+    except Exception as e:
+        print(f"gTTS fallback failed ({type(e).__name__}): {e}")
+        raise
 
 app = FastAPI(title="Telugu Voice AI", version="10.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -223,14 +270,82 @@ def health():
 
 @app.get("/assistant")
 def assistant():
-    return FileResponse("/home/azureuser/telugu_assistant.html")
+    return FileResponse(
+        "/home/azureuser/telugu_assistant.html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+    )
+
+@app.get("/debug")
+def debug():
+    """Diagnostic endpoint — tests LLM, Gemini TTS, and gTTS independently."""
+    result = {}
+
+    # Test LLM
+    try:
+        resp = gemini_client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents="Say 'ok' in Telugu (one word only).",
+            config=genai_types.GenerateContentConfig(max_output_tokens=10)
+        )
+        try:
+            txt = resp.text
+        except Exception as e:
+            txt = None
+            result["llm_text_error"] = str(e)
+        result["llm"] = {"ok": txt is not None, "response": txt}
+    except Exception as e:
+        result["llm"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    # Test Gemini TTS models
+    for model in _GEMINI_TTS_MODELS:
+        key = f"gemini_tts_{model}"
+        try:
+            resp = gemini_client.models.generate_content(
+                model=model,
+                contents="నమస్కారం",
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=genai_types.SpeechConfig(
+                        voice_config=genai_types.VoiceConfig(
+                            prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                                voice_name=_GEMINI_TTS_VOICE
+                            )
+                        )
+                    )
+                )
+            )
+            pcm = resp.candidates[0].content.parts[0].inline_data.data
+            if isinstance(pcm, str):
+                pcm = base64.b64decode(pcm)
+            result[key] = {"ok": bool(pcm), "bytes": len(pcm) if pcm else 0,
+                           "mime": resp.candidates[0].content.parts[0].inline_data.mime_type}
+        except Exception as e:
+            result[key] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    # Test gTTS
+    try:
+        tts = gTTS(text="నమస్కారం", lang='te', slow=False, tld='co.in')
+        buf = io.BytesIO()
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        data = buf.read()
+        result["gtts"] = {"ok": bool(data), "bytes": len(data)}
+    except Exception as e:
+        result["gtts"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    # Version info
+    result["google_genai_version"] = getattr(google_genai, "__version__", "unknown")
+    result["kb"] = "loaded" if _manuals_collection is not None else "disabled"
+
+    return result
+
 
 @app.get("/speak")
 def speak():
     """Test TTS endpoint — plays a greeting without needing STT."""
     try:
-        audio = do_tts("నమస్కారం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?")
-        return {"audio_base64": base64.b64encode(audio).decode()}
+        audio, content_type = do_tts("నమస్కారం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?")
+        return {"audio_base64": base64.b64encode(audio).decode(), "content_type": content_type}
     except Exception as e:
         print(f"ERROR in /speak: {traceback.format_exc()}")
         raise HTTPException(500, "Internal server error")
@@ -238,8 +353,8 @@ def speak():
 @app.post("/tts")
 def tts(req: TextReq):
     try:
-        audio = do_tts(req.text)
-        return {"audio_base64": base64.b64encode(audio).decode()}
+        audio, content_type = do_tts(req.text)
+        return {"audio_base64": base64.b64encode(audio).decode(), "content_type": content_type}
     except Exception as e:
         print(f"ERROR in /tts: {traceback.format_exc()}")
         raise HTTPException(500, "Internal server error")
@@ -253,24 +368,24 @@ def converse(req: ConvReq):
             raise HTTPException(400, "Empty transcript")
         instant = check_instant(user_text, ctx)
         if instant:
-            audio = do_tts(instant)
+            audio, ct = do_tts(instant)
             history = list(req.history or [])
             history.append({"role": "user", "content": user_text})
             history.append({"role": "assistant", "content": instant})
             return {"transcript": user_text, "response": instant,
-                    "audio_base64": base64.b64encode(audio).decode(), "history": history}
+                    "audio_base64": base64.b64encode(audio).decode(), "content_type": ct, "history": history}
         manual_ctx = retrieve_manual_context(user_text)
         msgs = [{"role": "system", "content": build_system(ctx, manual_ctx)}]
         for m in (req.history or [])[-8:]:
             msgs.append({"role": m.role, "content": m.content})
         msgs.append({"role": "user", "content": user_text})
         response = telugu_llm(msgs)
-        audio = do_tts(response)
+        audio, ct = do_tts(response)
         history = list(req.history or [])
         history.append({"role": "user", "content": user_text})
         history.append({"role": "assistant", "content": response})
         return {"transcript": user_text, "response": response,
-                "audio_base64": base64.b64encode(audio).decode(), "history": history}
+                "audio_base64": base64.b64encode(audio).decode(), "content_type": ct, "history": history}
     except HTTPException:
         raise
     except Exception as e:
@@ -314,7 +429,7 @@ def converse_stream(req: ConvReq):
                      {"role": "assistant", "content": response_text}]
             yield _sse({"type": "done", "history": hist})
         except Exception as e:
-            print(f"ERROR in /converse_stream: {traceback.format_exc()}")
+            print(f"ERROR in /converse_stream ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
             yield _sse({"type": "error", "msg": "Request failed. Please try again."})
 
     return StreamingResponse(
@@ -360,7 +475,7 @@ def converse_text_stream(req: TextConvReq):
                      {"role": "assistant", "content": response_text}]
             yield _sse({"type": "done", "history": hist})
         except Exception as e:
-            print(f"ERROR in /converse_text_stream: {traceback.format_exc()}")
+            print(f"ERROR in /converse_text_stream ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
             yield _sse({"type": "error", "msg": "Request failed. Please try again."})
 
     return StreamingResponse(
@@ -378,16 +493,16 @@ def voice(req: AudioReq):
             raise HTTPException(400, "Empty transcript")
         instant = check_instant(text, ctx)
         if instant:
-            audio = do_tts(instant)
+            audio, ct = do_tts(instant)
             return {"transcript": text, "response": instant,
-                    "audio_base64": base64.b64encode(audio).decode()}
+                    "audio_base64": base64.b64encode(audio).decode(), "content_type": ct}
         manual_ctx = retrieve_manual_context(text)
         msgs = [{"role": "system", "content": build_system(ctx, manual_ctx)},
                 {"role": "user", "content": text}]
         response = telugu_llm(msgs)
-        audio = do_tts(response)
+        audio, ct = do_tts(response)
         return {"transcript": text, "response": response,
-                "audio_base64": base64.b64encode(audio).decode()}
+                "audio_base64": base64.b64encode(audio).decode(), "content_type": ct}
     except Exception as e:
         print(f"ERROR in /voice: {traceback.format_exc()}")
         raise HTTPException(500, "Internal server error")

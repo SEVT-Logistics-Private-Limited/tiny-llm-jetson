@@ -469,7 +469,7 @@ async function testSound() {
     const r = await fetch(`${API}/speak`, { signal: AbortSignal.timeout(20000) });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
-    await playAudioB64(d.audio_base64);
+    await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg');
     btn.textContent = '✓ Sound works!';
     setTimeout(() => { btn.classList.remove('testing'); btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/></svg> Test Sound`; }, 2500);
   } catch(e) {
@@ -506,7 +506,7 @@ async function greetUser() {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({text: greeting}), signal: AbortSignal.timeout(20000)
     });
-    if (r.ok) { const d = await r.json(); await playAudioB64(d.audio_base64); greetingPlayed = true; }
+    if (r.ok) { const d = await r.json(); await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg'); greetingPlayed = true; }
   } catch(e) { console.warn('greeting tts error:', e); }
   if (!greetingPlayed && !userStopped) await speakWithBrowser(greeting);
   if (!userStopped) startListening();
@@ -800,7 +800,7 @@ async function handleSSE(ev, textMode, sseState = {}) {
           });
           if (r.ok) {
             const d = await r.json();
-            const played = await playAudioB64(d.audio_base64);
+            const played = await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg');
             if (!played) await speakWithBrowser(sseState.lastResponse);
           } else {
             await speakWithBrowser(sseState.lastResponse);
@@ -876,13 +876,13 @@ function cleanupMonitor() {
 }
 
 // ── Audio playback ──
-function playAudioB64(b64) {
+function playAudioB64(b64, contentType = 'audio/mpeg') {
   return new Promise(res => {
     try {
       const bytes = atob(b64);
       const buf = new Uint8Array(bytes.length);
       for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
-      const url = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
+      const url = URL.createObjectURL(new Blob([buf], { type: contentType }));
       sharedAudio.src = url;
       sharedAudio.onended = () => { URL.revokeObjectURL(url); res(true); };
       sharedAudio.onerror = () => { URL.revokeObjectURL(url); res(false); };
