@@ -214,16 +214,27 @@ def do_tts(text):
                 )
             )
             pcm = resp.candidates[0].content.parts[0].inline_data.data
+            if isinstance(pcm, str):
+                pcm = base64.b64decode(pcm)
+            if not pcm:
+                raise ValueError("Empty PCM data from Gemini TTS")
             return _pcm_to_wav(pcm), "audio/wav"
         except Exception as e:
             print(f"Gemini TTS ({model}) failed ({type(e).__name__}): {e}")
 
     # Fallback: gTTS
-    tts = gTTS(text=text, lang='te', slow=False, tld='co.in')
-    buf = io.BytesIO()
-    tts.write_to_fp(buf)
-    buf.seek(0)
-    return buf.read(), "audio/mpeg"
+    try:
+        tts = gTTS(text=text, lang='te', slow=False, tld='co.in')
+        buf = io.BytesIO()
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        data = buf.read()
+        if not data:
+            raise ValueError("Empty gTTS output")
+        return data, "audio/mpeg"
+    except Exception as e:
+        print(f"gTTS fallback failed ({type(e).__name__}): {e}")
+        raise
 
 app = FastAPI(title="Telugu Voice AI", version="10.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -259,7 +270,75 @@ def health():
 
 @app.get("/assistant")
 def assistant():
-    return FileResponse("/home/azureuser/telugu_assistant.html")
+    return FileResponse(
+        "/home/azureuser/telugu_assistant.html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+    )
+
+@app.get("/debug")
+def debug():
+    """Diagnostic endpoint — tests LLM, Gemini TTS, and gTTS independently."""
+    result = {}
+
+    # Test LLM
+    try:
+        resp = gemini_client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents="Say 'ok' in Telugu (one word only).",
+            config=genai_types.GenerateContentConfig(max_output_tokens=10)
+        )
+        try:
+            txt = resp.text
+        except Exception as e:
+            txt = None
+            result["llm_text_error"] = str(e)
+        result["llm"] = {"ok": txt is not None, "response": txt}
+    except Exception as e:
+        result["llm"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    # Test Gemini TTS models
+    for model in _GEMINI_TTS_MODELS:
+        key = f"gemini_tts_{model}"
+        try:
+            resp = gemini_client.models.generate_content(
+                model=model,
+                contents="నమస్కారం",
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=genai_types.SpeechConfig(
+                        voice_config=genai_types.VoiceConfig(
+                            prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                                voice_name=_GEMINI_TTS_VOICE
+                            )
+                        )
+                    )
+                )
+            )
+            pcm = resp.candidates[0].content.parts[0].inline_data.data
+            if isinstance(pcm, str):
+                pcm = base64.b64decode(pcm)
+            result[key] = {"ok": bool(pcm), "bytes": len(pcm) if pcm else 0,
+                           "mime": resp.candidates[0].content.parts[0].inline_data.mime_type}
+        except Exception as e:
+            result[key] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    # Test gTTS
+    try:
+        tts = gTTS(text="నమస్కారం", lang='te', slow=False, tld='co.in')
+        buf = io.BytesIO()
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        data = buf.read()
+        result["gtts"] = {"ok": bool(data), "bytes": len(data)}
+    except Exception as e:
+        result["gtts"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    # Version info
+    result["google_genai_version"] = getattr(google_genai, "__version__", "unknown")
+    result["kb"] = "loaded" if _manuals_collection is not None else "disabled"
+
+    return result
+
 
 @app.get("/speak")
 def speak():
@@ -350,8 +429,9 @@ def converse_stream(req: ConvReq):
                      {"role": "assistant", "content": response_text}]
             yield _sse({"type": "done", "history": hist})
         except Exception as e:
-            print(f"ERROR in /converse_stream: {traceback.format_exc()}")
-            yield _sse({"type": "error", "msg": "Request failed. Please try again."})
+            err_detail = traceback.format_exc()
+            print(f"ERROR in /converse_stream ({type(e).__name__}: {e}):\n{err_detail}")
+            yield _sse({"type": "error", "msg": f"Request failed ({type(e).__name__}). Please try again."})
 
     return StreamingResponse(
         generate(),
@@ -396,8 +476,9 @@ def converse_text_stream(req: TextConvReq):
                      {"role": "assistant", "content": response_text}]
             yield _sse({"type": "done", "history": hist})
         except Exception as e:
-            print(f"ERROR in /converse_text_stream: {traceback.format_exc()}")
-            yield _sse({"type": "error", "msg": "Request failed. Please try again."})
+            err_detail = traceback.format_exc()
+            print(f"ERROR in /converse_text_stream ({type(e).__name__}: {e}):\n{err_detail}")
+            yield _sse({"type": "error", "msg": f"Request failed ({type(e).__name__}). Please try again."})
 
     return StreamingResponse(
         generate(),
