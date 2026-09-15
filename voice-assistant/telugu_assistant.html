@@ -466,7 +466,7 @@ async function testSound() {
   btn.classList.add('testing'); btn.textContent = 'Loading…';
   try {
     unlockAudio();
-    const r = await fetch(`${API}/speak`, { signal: AbortSignal.timeout(20000) });
+    const r = await fetch(`${API}/speak`, { signal: AbortSignal.timeout(30000) });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
     await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg');
@@ -504,7 +504,7 @@ async function greetUser() {
   try {
     const r = await fetch(`${API}/tts`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({text: greeting}), signal: AbortSignal.timeout(20000)
+      body: JSON.stringify({text: greeting}), signal: AbortSignal.timeout(30000)
     });
     if (r.ok) { const d = await r.json(); await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg'); greetingPlayed = true; }
   } catch(e) { console.warn('greeting tts error:', e); }
@@ -787,17 +787,26 @@ async function handleSSE(ev, textMode, sseState = {}) {
       sseState.lastResponse = ev.text;
       addMessage('ai', ev.text);
       setState('speaking');
+      // Kick off TTS fetch immediately — runs in parallel while SSE stream finishes
+      if (!muted && !userStopped) {
+        sseState.ttsFetch = fetch(`${API}/tts`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({text: ev.text}),
+          signal: AbortSignal.timeout(30000)
+        });
+      }
       break;
     case 'done':
       if (ev.history) history = ev.history;
       if (sseState.lastResponse && !muted && !userStopped) {
         try {
-          const r = await fetch(`${API}/tts`, {
+          const r = await (sseState.ttsFetch || fetch(`${API}/tts`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({text: sseState.lastResponse}),
-            signal: AbortSignal.timeout(20000)
-          });
+            signal: AbortSignal.timeout(30000)
+          }));
           if (r.ok) {
             const d = await r.json();
             const played = await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg');
@@ -809,10 +818,12 @@ async function handleSSE(ev, textMode, sseState = {}) {
           await speakWithBrowser(sseState.lastResponse);
         }
       }
+      sseState.ttsFetch = null;
       setState('idle');
       if (!userStopped) setTimeout(() => startListening(), 200);
       break;
     case 'error':
+      sseState.ttsFetch = null;
       addMessage('ai', `⚠ ${ev.msg || 'Something went wrong'}`);
       setState('idle');
       if (!userStopped) setTimeout(() => startListening(), 2000);
