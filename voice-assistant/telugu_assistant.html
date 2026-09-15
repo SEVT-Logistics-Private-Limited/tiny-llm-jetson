@@ -800,11 +800,8 @@ async function handleSSE(ev, textMode, sseState = {}) {
           });
           if (r.ok) {
             const d = await r.json();
-            isPlayingAI = true;
-            startBargein();
-            await playAudioB64(d.audio_base64);
-            isPlayingAI = false;
-            stopBargein();
+            const played = await playAudioB64(d.audio_base64);
+            if (!played) await speakWithBrowser(sseState.lastResponse);
           } else {
             await speakWithBrowser(sseState.lastResponse);
           }
@@ -887,11 +884,10 @@ function playAudioB64(b64) {
       for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
       const url = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
       sharedAudio.src = url;
-      const cleanup = () => { URL.revokeObjectURL(url); res(); };
-      sharedAudio.onended = cleanup;
-      sharedAudio.onerror = cleanup;
-      sharedAudio.play().catch(cleanup);
-    } catch(e) { res(); }
+      sharedAudio.onended = () => { URL.revokeObjectURL(url); res(true); };
+      sharedAudio.onerror = () => { URL.revokeObjectURL(url); res(false); };
+      sharedAudio.play().catch(() => { URL.revokeObjectURL(url); res(false); });
+    } catch(e) { res(false); }
   });
 }
 
