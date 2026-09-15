@@ -1,4 +1,5 @@
 import base64, requests, os, re, io, traceback, json, time
+import concurrent.futures
 from google import genai as google_genai
 from google.genai import types as genai_types
 from gtts import gTTS
@@ -183,21 +184,29 @@ def telugu_llm(messages):
         raw = None
     return clean_for_tts(raw) if raw else "క్షమించాలి, మళ్ళీ అడగగలరా?"
 
+def _gtts_generate(text, tld):
+    tts = gTTS(text=text, lang='te', slow=False, tld=tld)
+    buf = io.BytesIO()
+    tts.write_to_fp(buf)
+    buf.seek(0)
+    return buf.read()
+
 def do_tts(text):
-    """TTS via gTTS. Returns (bytes, content_type)."""
-    text = text[:500]
-    try:
-        tts = gTTS(text=text, lang='te', slow=False, tld='co.in')
-        buf = io.BytesIO()
-        tts.write_to_fp(buf)
-        buf.seek(0)
-        data = buf.read()
-        if not data:
-            raise ValueError("Empty gTTS output")
-        return data, "audio/mpeg"
-    except Exception as e:
-        print(f"gTTS failed ({type(e).__name__}): {e}")
-        raise
+    """TTS via gTTS with 15s server-side timeout and TLD fallback."""
+    text = text[:350]
+    for tld in ('co.in', 'com'):
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                future = ex.submit(_gtts_generate, text, tld)
+                data = future.result(timeout=15)
+            if not data:
+                raise ValueError("Empty gTTS output")
+            return data, "audio/mpeg"
+        except concurrent.futures.TimeoutError:
+            print(f"gTTS timed out after 15s (tld={tld})")
+        except Exception as e:
+            print(f"gTTS failed (tld={tld}, {type(e).__name__}): {e}")
+    raise RuntimeError("All gTTS attempts failed")
 
 app = FastAPI(title="Telugu Voice AI", version="10.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -387,9 +396,10 @@ def converse_stream(req: ConvReq):
 
             yield _sse({"type": "response", "text": response_text})
 
-            hist = list(req.history or [])
-            hist += [{"role": "user", "content": user_text},
-                     {"role": "assistant", "content": response_text}]
+            # Convert Pydantic Msg objects to plain dicts so json.dumps can serialize them
+            hist = [{"role": m.role, "content": m.content} for m in (req.history or [])]
+            hist.append({"role": "user", "content": user_text})
+            hist.append({"role": "assistant", "content": response_text})
             yield _sse({"type": "done", "history": hist})
         except Exception as e:
             print(f"ERROR in /converse_stream ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
@@ -433,9 +443,10 @@ def converse_text_stream(req: TextConvReq):
 
             yield _sse({"type": "response", "text": response_text})
 
-            hist = list(req.history or [])
-            hist += [{"role": "user", "content": user_text},
-                     {"role": "assistant", "content": response_text}]
+            # Convert Pydantic Msg objects to plain dicts so json.dumps can serialize them
+            hist = [{"role": m.role, "content": m.content} for m in (req.history or [])]
+            hist.append({"role": "user", "content": user_text})
+            hist.append({"role": "assistant", "content": response_text})
             yield _sse({"type": "done", "history": hist})
         except Exception as e:
             print(f"ERROR in /converse_text_stream ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
