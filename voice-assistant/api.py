@@ -1,4 +1,4 @@
-import base64, requests, os, re, io, traceback, json, time, wave
+import base64, requests, os, re, io, traceback, json, time
 from google import genai as google_genai
 from google.genai import types as genai_types
 from gtts import gTTS
@@ -118,7 +118,10 @@ def gemini_stt(audio_bytes):
             ])
         ]
     )
-    return response.text.strip()
+    try:
+        return response.text.strip()
+    except Exception:
+        return ""
 
 def clean_for_tts(text):
     text = re.sub(r'[*/#_+|\[\]{}<>^~`\\]', '', text)
@@ -180,49 +183,9 @@ def telugu_llm(messages):
         raw = None
     return clean_for_tts(raw) if raw else "క్షమించాలి, మళ్ళీ అడగగలరా?"
 
-_GEMINI_TTS_MODELS = ["gemini-2.5-flash-preview-tts", "gemini-2.0-flash-preview-tts"]
-_GEMINI_TTS_VOICE = "Kore"  # Warm natural voice with Telugu support
-
-def _pcm_to_wav(pcm_bytes, sample_rate=24000, channels=1, sample_width=2):
-    buf = io.BytesIO()
-    with wave.open(buf, 'wb') as wf:
-        wf.setnchannels(channels)
-        wf.setsampwidth(sample_width)
-        wf.setframerate(sample_rate)
-        wf.writeframes(pcm_bytes)
-    buf.seek(0)
-    return buf.read()
-
 def do_tts(text):
-    """TTS: Gemini native voice (natural) → gTTS fallback. Returns (bytes, content_type)."""
+    """TTS via gTTS. Returns (bytes, content_type)."""
     text = text[:500]
-
-    for model in _GEMINI_TTS_MODELS:
-        try:
-            resp = gemini_client.models.generate_content(
-                model=model,
-                contents=text,
-                config=genai_types.GenerateContentConfig(
-                    response_modalities=["AUDIO"],
-                    speech_config=genai_types.SpeechConfig(
-                        voice_config=genai_types.VoiceConfig(
-                            prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                                voice_name=_GEMINI_TTS_VOICE
-                            )
-                        )
-                    )
-                )
-            )
-            pcm = resp.candidates[0].content.parts[0].inline_data.data
-            if isinstance(pcm, str):
-                pcm = base64.b64decode(pcm)
-            if not pcm:
-                raise ValueError("Empty PCM data from Gemini TTS")
-            return _pcm_to_wav(pcm), "audio/wav"
-        except Exception as e:
-            print(f"Gemini TTS ({model}) failed ({type(e).__name__}): {e}")
-
-    # Fallback: gTTS
     try:
         tts = gTTS(text=text, lang='te', slow=False, tld='co.in')
         buf = io.BytesIO()
@@ -233,7 +196,7 @@ def do_tts(text):
             raise ValueError("Empty gTTS output")
         return data, "audio/mpeg"
     except Exception as e:
-        print(f"gTTS fallback failed ({type(e).__name__}): {e}")
+        print(f"gTTS failed ({type(e).__name__}): {e}")
         raise
 
 app = FastAPI(title="Telugu Voice AI", version="10.0")
@@ -291,13 +254,13 @@ def debug():
             txt = resp.text
         except Exception as e:
             txt = None
-            result["llm_text_error"] = str(e)
+            result["llm_text_error"] = type(e).__name__
         result["llm"] = {"ok": txt is not None, "response": txt}
     except Exception as e:
-        result["llm"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        result["llm"] = {"ok": False, "error": type(e).__name__}
 
-    # Test Gemini TTS models
-    for model in _GEMINI_TTS_MODELS:
+    # Test Gemini TTS models (informational only — not in active production path)
+    for model in ["gemini-2.5-flash-preview-tts", "gemini-2.0-flash-preview-tts"]:
         key = f"gemini_tts_{model}"
         try:
             resp = gemini_client.models.generate_content(
@@ -308,7 +271,7 @@ def debug():
                     speech_config=genai_types.SpeechConfig(
                         voice_config=genai_types.VoiceConfig(
                             prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                                voice_name=_GEMINI_TTS_VOICE
+                                voice_name="Kore"
                             )
                         )
                     )
@@ -320,7 +283,7 @@ def debug():
             result[key] = {"ok": bool(pcm), "bytes": len(pcm) if pcm else 0,
                            "mime": resp.candidates[0].content.parts[0].inline_data.mime_type}
         except Exception as e:
-            result[key] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            result[key] = {"ok": False, "error": type(e).__name__}
 
     # Test gTTS
     try:
@@ -331,7 +294,7 @@ def debug():
         data = buf.read()
         result["gtts"] = {"ok": bool(data), "bytes": len(data)}
     except Exception as e:
-        result["gtts"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        result["gtts"] = {"ok": False, "error": type(e).__name__}
 
     # Version info
     result["google_genai_version"] = getattr(google_genai, "__version__", "unknown")
