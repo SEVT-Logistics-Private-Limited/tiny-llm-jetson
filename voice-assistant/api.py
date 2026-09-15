@@ -300,12 +300,6 @@ def converse_stream(req: ConvReq):
 
             yield _sse({"type": "response", "text": response_text})
 
-            try:
-                audio = do_tts(response_text)
-                yield _sse({"type": "audio", "data": base64.b64encode(audio).decode()})
-            except Exception:
-                print(f"TTS failed in /converse_stream: {traceback.format_exc()}")
-
             hist = list(req.history or [])
             hist += [{"role": "user", "content": user_text},
                      {"role": "assistant", "content": response_text}]
@@ -347,12 +341,6 @@ def converse_text_stream(req: TextConvReq):
                 response_text = telugu_llm(msgs)
 
             yield _sse({"type": "response", "text": response_text})
-
-            try:
-                audio = do_tts(response_text)
-                yield _sse({"type": "audio", "data": base64.b64encode(audio).decode()})
-            except Exception:
-                print(f"TTS failed in /converse_text_stream: {traceback.format_exc()}")
 
             hist = list(req.history or [])
             hist += [{"role": "user", "content": user_text},
