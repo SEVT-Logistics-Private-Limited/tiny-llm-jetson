@@ -761,7 +761,7 @@ async function readSSE(resp, textMode) {
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
-  const sseState = { gotAudio: false, lastResponse: '' };
+  const sseState = { lastResponse: '' };
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -788,21 +788,29 @@ async function handleSSE(ev, textMode, sseState = {}) {
       addMessage('ai', ev.text);
       setState('speaking');
       break;
-    case 'audio':
-      sseState.gotAudio = true;
-      if (!muted && !userStopped) {
-        isPlayingAI = true;
-        startBargein();
-        await playAudioB64(ev.data);
-        isPlayingAI = false;
-        stopBargein();
-      }
-      break;
     case 'done':
       if (ev.history) history = ev.history;
-      // Gemini TTS failed silently — fall back to browser voice
-      if (sseState.lastResponse && !sseState.gotAudio && !muted && !userStopped) {
-        await speakWithBrowser(sseState.lastResponse);
+      if (sseState.lastResponse && !muted && !userStopped) {
+        try {
+          const r = await fetch(`${API}/tts`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text: sseState.lastResponse}),
+            signal: AbortSignal.timeout(20000)
+          });
+          if (r.ok) {
+            const d = await r.json();
+            isPlayingAI = true;
+            startBargein();
+            await playAudioB64(d.audio_base64);
+            isPlayingAI = false;
+            stopBargein();
+          } else {
+            await speakWithBrowser(sseState.lastResponse);
+          }
+        } catch(e) {
+          await speakWithBrowser(sseState.lastResponse);
+        }
       }
       setState('idle');
       if (!userStopped) setTimeout(() => startListening(), 200);
