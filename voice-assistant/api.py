@@ -173,7 +173,12 @@ def telugu_llm(messages):
             max_output_tokens=200
         )
     )
-    return clean_for_tts(response.text)
+    # response.text raises ValueError when safety filters block or response is empty
+    try:
+        raw = response.text
+    except Exception:
+        raw = None
+    return clean_for_tts(raw) if raw else "క్షమించాలి, మళ్ళీ అడగగలరా?"
 
 def do_tts(text):
     """TTS via gTTS (Google Translate TTS). Returns MP3 bytes."""
@@ -296,7 +301,11 @@ def converse_stream(req: ConvReq):
                 for m in (req.history or [])[-8:]:
                     msgs.append({"role": m.role, "content": m.content})
                 msgs.append({"role": "user", "content": user_text})
-                response_text = telugu_llm(msgs)
+                try:
+                    response_text = telugu_llm(msgs)
+                except Exception as llm_err:
+                    print(f"LLM error in /converse_stream ({type(llm_err).__name__}): {traceback.format_exc()}")
+                    response_text = "క్షమించాలి, నాకు ఇప్పుడు జవాబు ఇవ్వడం కష్టంగా ఉంది. మళ్ళీ అడగగలరా?"
 
             yield _sse({"type": "response", "text": response_text})
 
@@ -338,7 +347,11 @@ def converse_text_stream(req: TextConvReq):
                 for m in (req.history or [])[-8:]:
                     msgs.append({"role": m.role, "content": m.content})
                 msgs.append({"role": "user", "content": user_text})
-                response_text = telugu_llm(msgs)
+                try:
+                    response_text = telugu_llm(msgs)
+                except Exception as llm_err:
+                    print(f"LLM error in /converse_text_stream ({type(llm_err).__name__}): {traceback.format_exc()}")
+                    response_text = "క్షమించాలి, నాకు ఇప్పుడు జవాబు ఇవ్వడం కష్టంగా ఉంది. మళ్ళీ అడగగలరా?"
 
             yield _sse({"type": "response", "text": response_text})
 
