@@ -254,10 +254,10 @@ def debug():
             txt = resp.text
         except Exception as e:
             txt = None
-            result["llm_text_error"] = str(e)
+            result["llm_text_error"] = type(e).__name__
         result["llm"] = {"ok": txt is not None, "response": txt}
     except Exception as e:
-        result["llm"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        result["llm"] = {"ok": False, "error": type(e).__name__}
 
     # Test Gemini TTS models (informational only — not in active production path)
     for model in ["gemini-2.5-flash-preview-tts", "gemini-2.0-flash-preview-tts"]:
@@ -283,7 +283,7 @@ def debug():
             result[key] = {"ok": bool(pcm), "bytes": len(pcm) if pcm else 0,
                            "mime": resp.candidates[0].content.parts[0].inline_data.mime_type}
         except Exception as e:
-            result[key] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            result[key] = {"ok": False, "error": type(e).__name__}
 
     # Test gTTS
     try:
@@ -294,7 +294,7 @@ def debug():
         data = buf.read()
         result["gtts"] = {"ok": bool(data), "bytes": len(data)}
     except Exception as e:
-        result["gtts"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        result["gtts"] = {"ok": False, "error": type(e).__name__}
 
     # Version info
     result["google_genai_version"] = getattr(google_genai, "__version__", "unknown")
