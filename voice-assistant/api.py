@@ -429,9 +429,8 @@ def converse_stream(req: ConvReq):
                      {"role": "assistant", "content": response_text}]
             yield _sse({"type": "done", "history": hist})
         except Exception as e:
-            err_detail = traceback.format_exc()
-            print(f"ERROR in /converse_stream ({type(e).__name__}: {e}):\n{err_detail}")
-            yield _sse({"type": "error", "msg": f"Request failed ({type(e).__name__}). Please try again."})
+            print(f"ERROR in /converse_stream ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
+            yield _sse({"type": "error", "msg": "Request failed. Please try again."})
 
     return StreamingResponse(
         generate(),
@@ -476,9 +475,8 @@ def converse_text_stream(req: TextConvReq):
                      {"role": "assistant", "content": response_text}]
             yield _sse({"type": "done", "history": hist})
         except Exception as e:
-            err_detail = traceback.format_exc()
-            print(f"ERROR in /converse_text_stream ({type(e).__name__}: {e}):\n{err_detail}")
-            yield _sse({"type": "error", "msg": f"Request failed ({type(e).__name__}). Please try again."})
+            print(f"ERROR in /converse_text_stream ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
+            yield _sse({"type": "error", "msg": "Request failed. Please try again."})
 
     return StreamingResponse(
         generate(),
