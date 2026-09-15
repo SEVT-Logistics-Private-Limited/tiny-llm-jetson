@@ -67,24 +67,33 @@ def _extract_text_from_response(resp):
 
 
 def _llm_call_with_fallback(contents, config, context_label="llm"):
-    """Call generate_content with model fallback. Returns (text, model_used) or (None, None)."""
+    """Call generate_content with model fallback + 1 retry on transient ServerErrors.
+    Returns (text, model_used) or (None, None)."""
     for model in LLM_MODELS:
-        try:
-            resp = gemini_client.models.generate_content(
-                model=model, contents=contents, config=config
-            )
-            txt = _extract_text_from_response(resp)
-            if txt:
-                return txt, model
-            # Diagnose why text is still empty
+        for attempt in range(2):
             try:
-                n = len(resp.candidates) if resp.candidates else 0
-                reason = str(resp.candidates[0].finish_reason) if n else "no_candidates"
-                print(f"{context_label}: empty text (model={model}, candidates={n}, finish_reason={reason})")
-            except Exception:
-                print(f"{context_label}: empty text (model={model}, could not inspect candidates)")
-        except Exception as e:
-            print(f"{context_label}: error (model={model}, {type(e).__name__}): {e}")
+                resp = gemini_client.models.generate_content(
+                    model=model, contents=contents, config=config
+                )
+                txt = _extract_text_from_response(resp)
+                if txt:
+                    return txt, model
+                # Diagnose why text is still empty
+                try:
+                    n = len(resp.candidates) if resp.candidates else 0
+                    reason = str(resp.candidates[0].finish_reason) if n else "no_candidates"
+                    print(f"{context_label}: empty text (model={model}, attempt={attempt}, candidates={n}, finish_reason={reason})")
+                except Exception:
+                    print(f"{context_label}: empty text (model={model}, attempt={attempt}, could not inspect candidates)")
+                break  # empty text — don't retry, try next model
+            except Exception as e:
+                err_type = type(e).__name__
+                if "ServerError" in err_type and attempt == 0:
+                    print(f"{context_label}: ServerError (model={model}), retrying after 1s...")
+                    time.sleep(1)
+                    continue
+                print(f"{context_label}: error (model={model}, attempt={attempt}, {err_type}): {e}")
+                break
     return None, None
 
 
