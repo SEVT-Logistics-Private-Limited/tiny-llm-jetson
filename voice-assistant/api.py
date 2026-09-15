@@ -47,6 +47,25 @@ def _load_kb():
 threading.Thread(target=_load_kb, daemon=True).start()
 
 
+def _extract_text_from_response(resp):
+    """Extract text from a GenerateContentResponse, bypassing response.text which
+    raises ValueError when finish_reason != STOP (e.g. MAX_TOKENS in google-genai>=2.x)."""
+    # Fast path: response.text works when finish_reason == STOP
+    try:
+        txt = resp.text
+        if txt:
+            return txt
+    except Exception:
+        pass
+    # Slow path: extract from candidates directly (handles MAX_TOKENS, etc.)
+    try:
+        parts = resp.candidates[0].content.parts
+        txt = "".join(p.text for p in parts if getattr(p, "text", None)) or None
+        return txt
+    except Exception:
+        return None
+
+
 def _llm_call_with_fallback(contents, config, context_label="llm"):
     """Call generate_content with model fallback. Returns (text, model_used) or (None, None)."""
     for model in LLM_MODELS:
@@ -54,19 +73,16 @@ def _llm_call_with_fallback(contents, config, context_label="llm"):
             resp = gemini_client.models.generate_content(
                 model=model, contents=contents, config=config
             )
-            try:
-                txt = resp.text
-            except Exception:
-                txt = None
+            txt = _extract_text_from_response(resp)
             if txt:
                 return txt, model
-            # Diagnose null response
+            # Diagnose why text is still empty
             try:
                 n = len(resp.candidates) if resp.candidates else 0
                 reason = str(resp.candidates[0].finish_reason) if n else "no_candidates"
-                print(f"{context_label}: null text (model={model}, candidates={n}, finish_reason={reason})")
+                print(f"{context_label}: empty text (model={model}, candidates={n}, finish_reason={reason})")
             except Exception:
-                print(f"{context_label}: null text (model={model}, could not inspect candidates)")
+                print(f"{context_label}: empty text (model={model}, could not inspect candidates)")
         except Exception as e:
             print(f"{context_label}: error (model={model}, {type(e).__name__}): {e}")
     return None, None
@@ -281,12 +297,9 @@ def debug():
             resp = gemini_client.models.generate_content(
                 model=model,
                 contents="Say 'ok' in Telugu (one word only).",
-                config=genai_types.GenerateContentConfig(max_output_tokens=10)
+                config=genai_types.GenerateContentConfig(max_output_tokens=50)
             )
-            try:
-                txt = resp.text
-            except Exception as e:
-                txt = None
+            txt = _extract_text_from_response(resp)
             entry = {"ok": bool(txt), "response": txt}
             if not txt:
                 try:
