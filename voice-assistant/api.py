@@ -59,11 +59,13 @@ def _extract_text_from_response(resp):
         pass
     # Slow path: extract from candidates directly (handles MAX_TOKENS, etc.)
     try:
-        parts = resp.candidates[0].content.parts
-        txt = "".join(p.text for p in parts if getattr(p, "text", None)) or None
-        return txt
+        candidate = resp.candidates[0]
+        if candidate.content and candidate.content.parts:
+            txt = "".join(p.text for p in candidate.content.parts if getattr(p, "text", None)) or None
+            return txt
     except Exception:
-        return None
+        pass
+    return None
 
 
 def _llm_call_with_fallback(contents, config, context_label="llm"):
@@ -333,7 +335,7 @@ def debug():
                 contents=[genai_types.Content(role="user", parts=[genai_types.Part(text="హైదరాబాద్ ఏ రాష్ట్రానికి రాజధాని?")])],
                 config=genai_types.GenerateContentConfig(
                     system_instruction="నువ్వు తెలుగు AI అసిస్టెంట్‌వి. తెలుగులో మాత్రమే జవాబు ఇవ్వు.",
-                    max_output_tokens=100
+                    max_output_tokens=200
                 )
             )
             txt2 = _extract_text_from_response(resp2)
@@ -357,7 +359,7 @@ def debug():
                     genai_types.Content(role="model", parts=[genai_types.Part(text="సరే.")]),
                     genai_types.Content(role="user", parts=[genai_types.Part(text="హైదరాబాద్ ఏ రాష్ట్రానికి రాజధాని?")]),
                 ],
-                config=genai_types.GenerateContentConfig(max_output_tokens=100)
+                config=genai_types.GenerateContentConfig(max_output_tokens=200)
             )
             txt3 = _extract_text_from_response(resp3)
             entry["with_sys_as_turn"] = {"ok": bool(txt3), "response": txt3}
