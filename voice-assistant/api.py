@@ -211,7 +211,13 @@ def build_system(ctx, manual_context=None):
 
 def telugu_llm(messages):
     system_msg = messages[0]["content"]
-    contents = []
+    # Prepend system instruction as user+model turn — more universally supported
+    # than system_instruction in GenerateContentConfig (some models return ClientError
+    # when system_instruction is used, silently failing to generate any response).
+    contents = [
+        genai_types.Content(role="user", parts=[genai_types.Part(text=system_msg)]),
+        genai_types.Content(role="model", parts=[genai_types.Part(text="సరే.")]),
+    ]
     for m in messages[1:]:
         role = "user" if m["role"] == "user" else "model"
         contents.append(genai_types.Content(
@@ -220,15 +226,13 @@ def telugu_llm(messages):
         ))
     raw, model_used = _llm_call_with_fallback(
         contents=contents,
-        config=genai_types.GenerateContentConfig(
-            system_instruction=system_msg,
-            max_output_tokens=200
-        ),
+        config=genai_types.GenerateContentConfig(max_output_tokens=200),
         context_label="telugu_llm"
     )
     if raw:
         print(f"telugu_llm: response from model={model_used}")
         return clean_for_tts(raw)
+    print("telugu_llm: all models returned None — returning fallback")
     return "క్షమించాలి, మళ్ళీ అడగగలరా?"
 
 def _gtts_generate(text, tld):
@@ -299,9 +303,11 @@ def debug():
     """Diagnostic endpoint — tests LLM, Gemini TTS, and gTTS independently."""
     result = {}
 
-    # Test each LLM model independently
+    # Test each LLM model: once without system_instruction, once with (to detect support)
     llm_results = {}
     for model in LLM_MODELS:
+        entry = {}
+        # Plain test (no system_instruction)
         try:
             resp = gemini_client.models.generate_content(
                 model=model,
@@ -309,25 +315,68 @@ def debug():
                 config=genai_types.GenerateContentConfig(max_output_tokens=50)
             )
             txt = _extract_text_from_response(resp)
-            entry = {"ok": bool(txt), "response": txt}
+            entry["plain"] = {"ok": bool(txt), "response": txt}
             if not txt:
                 try:
                     n = len(resp.candidates) if resp.candidates else 0
-                    entry["candidates"] = n
+                    entry["plain"]["candidates"] = n
                     if n:
-                        entry["finish_reason"] = str(resp.candidates[0].finish_reason)
-                    if hasattr(resp, 'prompt_feedback') and resp.prompt_feedback:
-                        entry["prompt_feedback"] = str(resp.prompt_feedback)
+                        entry["plain"]["finish_reason"] = str(resp.candidates[0].finish_reason)
                 except Exception:
-                    entry["diag_error"] = "could not inspect candidates"
-            llm_results[model] = entry
+                    pass
         except Exception as e:
-            llm_results[model] = {"ok": False, "error": type(e).__name__}
+            entry["plain"] = {"ok": False, "error": type(e).__name__}
+        # Test with system_instruction (same as old telugu_llm code path)
+        try:
+            resp2 = gemini_client.models.generate_content(
+                model=model,
+                contents=[genai_types.Content(role="user", parts=[genai_types.Part(text="హైదరాబాద్ ఏ రాష్ట్రానికి రాజధాని?")])],
+                config=genai_types.GenerateContentConfig(
+                    system_instruction="నువ్వు తెలుగు AI అసిస్టెంట్‌వి. తెలుగులో మాత్రమే జవాబు ఇవ్వు.",
+                    max_output_tokens=100
+                )
+            )
+            txt2 = _extract_text_from_response(resp2)
+            entry["with_sys_instruction"] = {"ok": bool(txt2), "response": txt2}
+            if not txt2:
+                try:
+                    n = len(resp2.candidates) if resp2.candidates else 0
+                    entry["with_sys_instruction"]["candidates"] = n
+                    if n:
+                        entry["with_sys_instruction"]["finish_reason"] = str(resp2.candidates[0].finish_reason)
+                except Exception:
+                    pass
+        except Exception as e:
+            entry["with_sys_instruction"] = {"ok": False, "error": type(e).__name__}
+        # Test with system as first user turn (new approach)
+        try:
+            resp3 = gemini_client.models.generate_content(
+                model=model,
+                contents=[
+                    genai_types.Content(role="user", parts=[genai_types.Part(text="నువ్వు తెలుగు AI అసిస్టెంట్‌వి. తెలుగులో మాత్రమే జవాబు ఇవ్వు.")]),
+                    genai_types.Content(role="model", parts=[genai_types.Part(text="సరే.")]),
+                    genai_types.Content(role="user", parts=[genai_types.Part(text="హైదరాబాద్ ఏ రాష్ట్రానికి రాజధాని?")]),
+                ],
+                config=genai_types.GenerateContentConfig(max_output_tokens=100)
+            )
+            txt3 = _extract_text_from_response(resp3)
+            entry["with_sys_as_turn"] = {"ok": bool(txt3), "response": txt3}
+            if not txt3:
+                try:
+                    n = len(resp3.candidates) if resp3.candidates else 0
+                    entry["with_sys_as_turn"]["candidates"] = n
+                    if n:
+                        entry["with_sys_as_turn"]["finish_reason"] = str(resp3.candidates[0].finish_reason)
+                except Exception:
+                    pass
+        except Exception as e:
+            entry["with_sys_as_turn"] = {"ok": False, "error": type(e).__name__}
+        llm_results[model] = entry
     result["llm_models"] = llm_results
-    # Summary: first working model
-    working = next((m for m, v in llm_results.items() if v.get("ok")), None)
+    # Summary: first model where plain test works
+    working = next((m for m, v in llm_results.items() if v.get("plain", {}).get("ok")), None)
     result["llm"] = {"ok": working is not None, "active_model": working,
-                     "response": llm_results[working]["response"] if working else None}
+                     "response": llm_results[working]["plain"]["response"] if working else None}
 
     # Test Gemini TTS models (informational only — not in active production path)
     for model in ["gemini-2.5-flash-preview-tts", "gemini-2.0-flash-preview-tts"]:
