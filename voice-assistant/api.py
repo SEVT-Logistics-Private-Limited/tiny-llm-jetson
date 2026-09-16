@@ -175,9 +175,12 @@ def gemini_stt(audio_bytes):
 
 def clean_for_tts(text):
     text = re.sub(r'[*/#_+|\[\]{}<>^~`\\]', '', text)
-    text = re.sub(r'\([^)]*[a-zA-Z]{2,}[^)]*\)', '', text)
-    text = re.sub(r'\b\d+\.\s*', '', text)
-    text = re.sub(r'\b[a-zA-Z]+\b', '', text)
+    text = re.sub(r'\([^)]*[a-zA-Z]{4,}[^)]*\)', '', text)  # remove (parenthetical English explanations)
+    text = re.sub(r'\b\d+\.\s*', '', text)  # remove numbered list markers
+    # Remove lines that are entirely English (no Telugu chars) — preserve code-switching
+    lines = text.split('\n')
+    kept = [l for l in lines if sum(1 for c in l if 'ఀ' <= c <= '౿') > 0 or not re.search(r'[a-zA-Z]{4,}', l)]
+    text = ' '.join(kept)
     text = re.sub(r'[.,;:!?]{2,}', '.', text)
     text = re.sub(r'\s+', ' ', text).strip()
     telugu_count = sum(1 for c in text if 'ఀ' <= c <= '౿')
@@ -187,9 +190,16 @@ def clean_for_tts(text):
 
 def build_system(ctx, manual_context=None):
     base = (
-        "నువ్వు యోధ అనే తెలుగు AI అసిస్టెంట్‌వి. నువ్వు చాలా స్నేహంగా, వేడుకగా మాట్లాడతావు - ఒక మంచి స్నేహితుడిలా.\n"
-        f"సమయం: {ctx['time']} IST, తేదీ: {ctx['date']}, వారం: {ctx['day']}\n"
-        "భారత రాజధాని న్యూఢిల్లీ, తెలంగాణ రాజధాని హైదరాబాద్, ఆంధ్రప్రదేశ్ రాజధాని అమరావతి.\n"
+        "నువ్వు యోధ — ఒక స్నేహితుడిలాంటి తెలుగు AI అసిస్టెంట్‌వి.\n"
+        f"ఇప్పుడు సమయం {ctx['time']} IST, {ctx['date']}, {ctx['day']}.\n"
+        "భారత రాజధాని న్యూఢిల్లీ, తెలంగాణ రాజధాని హైదరాబాద్, ఆంధ్రప్రదేశ్ రాజధాని అమరావతి.\n\n"
+        "నువ్వు మాట్లాడే తీరు:\n"
+        "— ప్రశ్నకు తగినట్టు జవాబు ఇవ్వు: చిన్న ప్రశ్నకు చిన్న జవాబు, వివరణ అవసరమైతే స్పష్టంగా చెప్పు.\n"
+        "— ప్రధానంగా తెలుగులో మాట్లాడు. Technical terms లేదా common English పదాలు అవసరమైతే వాడవచ్చు.\n"
+        "— *, #, _, / లాంటి symbols వాడకు — మాటల్లో సహజంగా చెప్పు.\n"
+        "— వేడుకగా, నిజాయితీగా ఉండు. వినేవారికి comfortable గా అనిపించాలి.\n"
+        "— Real-time డేటా (cricket scores, weather, breaking news) తెలియకపోతే చెప్పు: 'అది నాకు live గా తెలియదు మిత్రమా'\n"
+        "— తెలియని విషయాలు తెలియదని చెప్పు — imagine చేయకు.\n"
     )
     if manual_context:
         base += (
@@ -197,16 +207,6 @@ def build_system(ctx, manual_context=None):
             f"{manual_context['passage']}\n"
             "పై సమాచారం ఆధారంగా వినియోగదారు ప్రశ్నకు సమాధానం ఇవ్వు.\n"
         )
-    base += (
-        "\nనియమాలు:\n"
-        "1. ఎల్లప్పుడూ శుద్ధ తెలుగులో మాత్రమే మాట్లాడు - ఒక్క ఇంగ్లీష్ పదం కూడా వాడకు\n"
-        "2. *, /, #, _ లాంటి గుర్తులు వాడకు\n"
-        "3. జవాబు చాలా చిన్నగా ఉండాలి - 1-2 వాక్యాలు మాత్రమే\n"
-        "4. స్నేహంగా, వేడుకగా, సహజంగా మాట్లాడు - ఒక స్నేహితుడిలా\n"
-        "5. సంక్షిప్తంగా, స్పష్టంగా చెప్పు\n"
-        "6. క్రికెట్ స్కోర్లు, వాతావరణం, వార్తలు లాంటి real-time సమాచారం అడిగితే తెలుగులో చెప్పు: 'అది ఇప్పుడు నాకు తెలియదు మిత్రమా, వేరే ఏదైనా అడగండి'\n"
-        "7. తెలియని విషయాల గురించి తెలుగులో చెప్పు: 'ఆ విషయం నాకు తెలియదు, వేరే ఏమైనా సహాయం చేయనా?'"
-    )
     return base
 
 def telugu_llm(messages):
@@ -226,7 +226,7 @@ def telugu_llm(messages):
         ))
     raw, model_used = _llm_call_with_fallback(
         contents=contents,
-        config=genai_types.GenerateContentConfig(max_output_tokens=200),
+        config=genai_types.GenerateContentConfig(max_output_tokens=500),
         context_label="telugu_llm"
     )
     if raw:
@@ -244,7 +244,7 @@ def _gtts_generate(text, tld):
 
 def do_tts(text):
     """TTS via gTTS with 15s server-side timeout and TLD fallback."""
-    text = text[:350]
+    text = text[:500]
     for tld in ('co.in', 'com'):
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
