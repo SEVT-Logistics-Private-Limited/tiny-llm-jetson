@@ -16,7 +16,7 @@ GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 gemini_client = google_genai.Client(api_key=GEMINI_KEY)
 
 # Ordered fallback chain — first model that returns non-null text wins
-LLM_MODELS = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
+LLM_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]
 
 import threading
 
