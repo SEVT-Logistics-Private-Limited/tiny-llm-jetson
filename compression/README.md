@@ -6,7 +6,73 @@ Everything here runs in **Google Colab (A100-80GB)**. Nothing runs on the Jetson
 
 `tiny_llm_3b.py` was trained only on `"to be or not to be that is the question " * 200` with 13 characters. It memorised one sentence, so a compressed copy would still only say that sentence. Compression keeps what a model already knows — it cannot add knowledge. So we compress a **real** pretrained 3B model instead (default: `meta-llama/Llama-3.2-3B-Instruct`, or your own Telugu fine-tuned 3B model).
 
-## Two ways to compress
+## The full pipeline
+
+```
+Step 1  finetune_telugu_3b.py   real 3B model  ->  3B model that answers in Telugu like Yodha   (~1–3 h)
+Step 2  ternary_qat_3b.py       Telugu 3B (6.4 GB)  ->  PrismML-style ternary 3B (~1.1 GB)       (~4 h – 2 days)
+```
+
+---
+
+## Step 1 — Telugu fine-tuning (`finetune_telugu_3b.py`)
+
+Teaches the 3B model to answer your Telugu questions in Yodha's style (same rules as the system prompt in `voice-assistant/api.py`). It uses **LoRA**: the 3B base stays frozen and only small add-on matrices (~1–3% of the weights) are trained, so it is fast and does not make the model forget what it already knows.
+
+### Your data
+
+One file or several, `.jsonl` or `.csv`. Any of these shapes works:
+
+```json
+{"question": "ఇంజిన్ ఆయిల్ ఎప్పుడు మార్చాలి?", "answer": "సాధారణంగా ప్రతి పది వేల కిలోమీటర్లకు ఒకసారి మార్చాలి."}
+{"instruction": "...", "output": "..."}
+{"prompt": "...", "response": "..."}
+{"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}, ...]}
+```
+CSV: a header row with `question,answer` (or `instruction,output`, `prompt,response`). Put your 8,439 Q&A pairs, plus Q&A written from the vehicle manuals, into these files and upload them to Google Drive.
+
+### Colab cells
+
+```python
+# Cell 1 — setup (Runtime -> A100 GPU)
+from google.colab import drive; drive.mount('/content/drive')
+!git clone -b claude/funny-thompson-o1yi7c https://github.com/SEVT-Logistics-Private-Limited/tiny-llm-jetson
+!pip install -q transformers datasets accelerate peft bitsandbytes
+!huggingface-cli login            # Llama 3.2 is gated: accept its license on Hugging Face first
+
+# Cell 2 — train (re-run after a disconnect: it resumes from Drive)
+!python tiny-llm-jetson/compression/finetune_telugu_3b.py train \
+    --qa /content/drive/MyDrive/telugu_qa.jsonl \
+    --text-dataset ai4bharat/samanantar \
+    --out /content/drive/MyDrive/telugu-3b
+
+# Cell 3 — merge LoRA into the base -> /content/drive/MyDrive/telugu-3b/merged
+!python tiny-llm-jetson/compression/finetune_telugu_3b.py merge --out /content/drive/MyDrive/telugu-3b
+
+# Cell 4 — compare base vs fine-tuned on held-out questions
+!python tiny-llm-jetson/compression/finetune_telugu_3b.py eval \
+    --qa /content/drive/MyDrive/telugu_qa.jsonl --out /content/drive/MyDrive/telugu-3b
+```
+
+### What happens inside
+
+- 2% of your Q&A is held out for eval; the rest is trained for 3 epochs (`--epochs`).
+- Every example gets the Yodha system prompt; **only the answer tokens are trained** (the question and system prompt are not).
+- `--text-dataset` (optional) fills 20% of each batch with raw Telugu sentences (`--text-mix`) to strengthen general Telugu.
+- LoRA rank 64 on all attention + MLP layers, lr 2e-4, 8 examples × 2 accumulation = 16 per step.
+- Memory: ~6.5 GB model + ~15–25 GB activations — fits easily in 80 GB (also fits a 40 GB A100 with `--batch-size 4 --grad-accum 4`).
+- Time: 8,439 pairs × 3 epochs ≈ 2,000 steps ≈ 1–3 hours on A100 (estimate; the log prints hours left).
+- `eval` prints, for both base and fine-tuned: the loss on held-out answers (lower = better) and the % of Telugu script in their answers, then the answers side by side.
+
+Then go to Step 2 with the merged folder as the teacher:
+```python
+!python tiny-llm-jetson/compression/ternary_qat_3b.py train \
+    --teacher /content/drive/MyDrive/telugu-3b/merged --out /content/drive/MyDrive/ternary-3b
+```
+
+---
+
+## Step 2 — Compression: two ways
 
 | | Path A — quick 4-bit | Path B — PrismML-style ternary |
 |---|---|---|
@@ -32,6 +98,8 @@ Size estimate for Llama-3.2-3B, Path B: ternary layer weights 0.70 GB + scales 0
 ```
 
 ## Path B — PrismML-style ternary compression (Colab cells)
+
+Use `--teacher /content/drive/MyDrive/telugu-3b/merged` to compress your Step 1 model.
 
 **Cell 1 — setup** (Runtime → A100 GPU, High-RAM)
 ```python
@@ -89,8 +157,9 @@ One step = 4 × 512 × 8 = 16,384 tokens. Expect roughly 3,000–5,000 tokens/s,
 - The teacher's Telugu ability is the ceiling: if the 3B teacher answers Telugu poorly, fine-tune it on Telugu first, then pass that folder as `--teacher`.
 - `ternary_model.pt` is our own packed format (2-bit codes + one FP16 scale per 128 weights). The `eval` stage loads it in PyTorch. Running it in llama.cpp needs a converter, because llama.cpp's ternary formats (`TQ1_0`/`TQ2_0`) use a different scale layout — a later step.
 
-## Test
+## Tests
 
 ```bash
+python compression/test_finetune_telugu.py  # tiny random model on CPU, ~1 min: data formats, answer-only loss mask, train/resume/merge/eval CLI
 python compression/test_ternary_qat.py   # tiny random model on CPU, ~1 min: layers swap, training, resume, pack/unpack, reload
 ```
