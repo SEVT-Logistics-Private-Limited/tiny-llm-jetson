@@ -25,4 +25,5 @@ Trained on actual Telugu text (ai4bharat/samanantar) — not a placeholder corpu
 
 ## Purpose
 Foundation layer for Telugu voice assistant pipeline.
-Next steps: connect Sarvam AI STT + this model + Bulbul TTS via FastAPI.
+Next steps (original plan): connect Sarvam AI STT + this model + Bulbul TTS via FastAPI.
+Current status: the live assistant runs on Gemini + RAG (see README, "Telugu Voice AI Assistant").
