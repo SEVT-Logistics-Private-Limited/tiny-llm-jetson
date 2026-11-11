@@ -1,166 +1,189 @@
-# tiny-llm-jetson
+<div align="center">
 
-From-scratch GPT transformers scaled from 984 params to 3B+. They are the foundation of **Yodha**, a live Telugu voice AI assistant.
+# Yodha · Telugu Voice AI
 
-**Author:** Rishi Sasanala · Yodha AI (SEVT Logistics Private Limited)
-**Hardware:** Jetson Orin Nano Super + Colab Pro A100-SXM4-80GB
-**Stack:** PyTorch · FastAPI · Google Gemini · ChromaDB + multilingual-e5 (RAG) · Docker · Azure Container Apps · GitHub Actions
+**From-scratch transformer research and a production Telugu voice assistant, built by Yodha AI.**
 
----
+[![Live Demo](https://img.shields.io/badge/Live-Demo-0A66C2?style=for-the-badge)](https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontainerapps.io/assistant)
+[![API Docs](https://img.shields.io/badge/API-OpenAPI-2E7D32?style=for-the-badge)](https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontainerapps.io/docs)
+[![Models](https://img.shields.io/badge/Models-Hugging%20Face-F9A825?style=for-the-badge)](https://huggingface.co/RishikUttejSasanala)
 
-## Overview
+![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Gemini](https://img.shields.io/badge/Google%20Gemini-4285F4?logo=google&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+![Azure](https://img.shields.io/badge/Azure%20Container%20Apps-0078D4?logo=microsoftazure&logoColor=white)
+![NVIDIA Jetson](https://img.shields.io/badge/NVIDIA%20Jetson-76B900?logo=nvidia&logoColor=white)
 
-Three tracks:
-
-1. **Scale experiments:** a GPT trained on a toy English corpus, scaled from 984 params to 3B+ to learn what changes with scale.
-2. **Telugu language models:**
-   - a 25M param GPT trained from scratch on real Telugu text
-   - a conversational Telugu fine-tune
-   - a LoRA → ternary compression pipeline for a real 3B model ([`compression/`](compression/README.md))
-3. **Yodha voice assistant:** a live Telugu voice assistant (Gemini LLM + RAG over vehicle manuals), deployed on Azure Container Apps.
+</div>
 
 ---
 
-## Model Rungs
+## Executive Summary
 
-| Rung | Params | Platform | Loss | Notes |
-|------|--------|----------|------|-------|
-| 1 | 984 | Jetson Orin | 0.175 | Pipeline proof on edge hardware |
-| 2 | 990K | Jetson Orin | 0.016 | 1000x scale, flawless |
-| 3 | 151M | Jetson + Colab T4 | 1.114 | First large model, bf16 |
-| 4 | 399M | Colab A100 | — | Gradient checkpointing introduced |
-| 5 | 1B | Colab A100-80GB | — | First billion-parameter run |
-| 6 | 2B | Colab A100-80GB | — | 3.8GB checkpoint |
-| 7 | 3B | Colab A100-80GB | 0.1098 | Near-perfect loss |
-| 8 MAX | 3.07B | Colab A100-80GB | 0.0977 | Hardware maximum on A100-80GB (`tiny_llm_5b.py`) |
-| 9 | 25M | Colab A100-80GB | 1.42 | Telugu: first real language |
+Yodha is a Telugu-first voice assistant that answers spoken questions in natural Telugu, grounded in our vehicle manuals. It is live today on Azure and deployed automatically from this repository.
 
-Rungs 1–8 train on one repeated sentence, so low loss there means memorization, not language ability. Rung 9 is the first real-language model.
+Behind it is a research program to own the model layer end to end: GPT transformers built from scratch and scaled from **984 parameters to 3 billion**, a **Telugu language model trained from scratch**, and a compression pipeline that shrinks a 3B model from **6.4 GB to about 1.1 GB** so it can run on edge hardware.
 
-Checkpoints: [HuggingFace/RishikUttejSasanala](https://huggingface.co/RishikUttejSasanala)
+| | |
+|---|---|
+| **Product** | Live Telugu voice assistant with retrieval over vehicle manuals (RAG) |
+| **Scale reached** | 3.07B parameters trained from scratch (the limit of a single A100-80GB) |
+| **Language** | 25M-parameter Telugu GPT, plus a conversational fine-tune (loss 2.17 → 0.76) |
+| **Edge path** | Ternary compression: 3B model, 6.4 GB → ~1.1 GB, targeting Jetson Orin Nano |
+| **Delivery** | Containerised, CI/CD to Azure Container Apps on every merge to `main` |
 
 ---
 
-## Telugu Voice AI Assistant (Yodha), v10
+## Product: Yodha Voice Assistant (v10)
 
-**Live:** https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontainerapps.io/assistant
-**API docs:** https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontainerapps.io/docs
-**Health:** https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontainerapps.io/healthz
+### How it works
 
-### Pipeline
-
+```mermaid
+flowchart LR
+    A[🎙️ Voice input] --> B[Speech-to-text<br/>Browser te-IN · Gemini fallback]
+    B --> C{Instant reply?<br/>time · date · greetings}
+    C -- "yes, under 100 ms" --> G
+    C -- no --> D[RAG<br/>multilingual-e5 + ChromaDB<br/>vehicle manuals]
+    D --> E[LLM<br/>Gemini, 3-model fallback chain]
+    E --> F[Telugu text clean-up]
+    F --> G[Text-to-speech<br/>gTTS Telugu · browser fallback]
+    G --> H[🔊 Spoken answer]
 ```
-Mic ──► Browser Web Speech API (te-IN) ──────────────► text ─┐
-   └─► (fallback) MediaRecorder WebM ──► Gemini STT ──► text ─┤
-                                                             ▼
-              instant reply? (time / date / greetings, <100ms) ──► yes ──► answer
-                                                             │ no
-                                                             ▼
-        RAG: translate → multilingual-e5 → ChromaDB (vehicle manuals), top-1, distance ≤ 0.35
-                                                             ▼
-        Gemini LLM (fallback chain: gemini-3.6-flash → gemini-2.0-flash → gemini-1.5-flash)
-                                                             ▼
-        clean_for_tts (strip symbols / English-only lines) ──► gTTS (Telugu) ──► audio
-                                                             └─► (fallback) browser speechSynthesis
-```
+
+### Capabilities
+
+- **Natural conversation:** continuous voice loop with memory of the last 8 turns, and barge-in so users can interrupt.
+- **Grounded answers:** responses use the relevant vehicle-manual passage when one matches.
+- **Low latency:** common questions answered in under 100 ms without the LLM. Answers stream over SSE, and audio generation starts as soon as text arrives.
+- **Telugu-first output:** natural Telugu, with technical English allowed where people actually use it.
+- **Resilient by design:** every stage has a fallback, so a single provider failure never takes the assistant down.
 
 | Stage | Primary | Fallback |
 |---|---|---|
-| Speech-to-text | Browser Web Speech API (`te-IN`), so no audio upload | Gemini (inline `audio/webm`) |
-| LLM | Gemini (`gemini-3.6-flash`) | `gemini-2.0-flash` → `gemini-1.5-flash` → Telugu apology message |
-| Knowledge | RAG over vehicle manuals (ChromaDB + `intfloat/multilingual-e5-small`) | Answers without manual context |
-| Text-to-speech | gTTS Telugu (`co.in` → `com`, 15s timeout) | Browser `speechSynthesis` |
-
-### API Endpoints (`voice-assistant/api.py`)
-
-| Endpoint | Function |
-|----------|----------|
-| GET `/healthz` | Liveness probe (no I/O) |
-| GET `/` | Status: version, IST time, knowledge-base state (`kb: loaded / disabled`) |
-| GET `/assistant` | Web voice assistant UI |
-| GET `/docs` | OpenAPI docs |
-| GET `/debug` | Diagnostics: tests each Gemini model, TTS backends, KB |
-| GET `/speak` | TTS test (greeting) |
-| POST `/tts` | Text → Telugu audio |
-| POST `/converse` | Audio + history → transcript, answer, audio, history |
-| POST `/converse_stream` | Same as `/converse`, as Server-Sent Events (`transcript` → `response` → `done`) |
-| POST `/converse_text_stream` | Pre-transcribed text + history → SSE (skips STT; used by the UI) |
-| POST `/voice` | Single-turn audio in → audio out |
-
-### Features
-- Continuous conversation loop with memory (last 8 turns)
-- Answers grounded in vehicle manuals via RAG, with the source attached to the prompt
-- Real-time context: current IST time, date and weekday in every prompt
-- Instant replies (time, date, greetings) in under 100ms without calling the LLM
-- Mostly-Telugu answers (technical English allowed), with markdown and symbols stripped before TTS
-- SSE streaming. TTS is fetched in parallel as soon as the answer text arrives.
-- Barge-in: speak over Yodha to interrupt
-- Web Audio VAD for the recording fallback, plus a shared audio element for mobile autoplay
-
-> **Knowledge base status:** RAG loads in the background from a ChromaDB volume at `/mnt/vehicledata`. If the volume isn't mounted, the API keeps working without manual context and `GET /` reports `"kb": "disabled"`. Check that field after every deploy.
+| Speech-to-text | Browser Web Speech API (`te-IN`) | Gemini audio transcription |
+| Language model | `gemini-3.6-flash` | `gemini-2.0-flash` → `gemini-1.5-flash` → graceful Telugu message |
+| Knowledge | ChromaDB + `intfloat/multilingual-e5-small` | Answers without manual context |
+| Text-to-speech | gTTS Telugu | Browser `speechSynthesis` |
 
 ### Infrastructure
-- **Hosting:** Azure Container Apps (South India), min 1 replica
-- **Image:** `voice-assistant/Dockerfile` (python:3.11-slim, pinned deps; `multilingual-e5-small` baked in so RAG runs offline)
-- **Registry:** Azure Container Registry (`telugu-voice-ai:<git-sha>` and `:latest`)
-- **CI/CD:** `.github/workflows/deploy.yml`. Every push to `main` runs `az acr build`, then `az containerapp update`.
-- **Secrets:** `GEMINI_API_KEY` (GitHub Actions secret → container env)
-- **TLS:** managed by Container Apps ingress
 
-### Key Files
-| File | Purpose |
+| Component | Implementation |
 |---|---|
-| `voice-assistant/api.py` | **Current** FastAPI server (v10) |
-| `voice-assistant/telugu_assistant.html` | **Current** voice assistant UI |
-| `voice-assistant/Dockerfile`, `requirements.txt` | Container build |
-| `.github/workflows/deploy.yml` | Build & deploy to Azure Container Apps |
-| `tiny_llm_telugu.py` / `tiny_llm_telugu.pt` | Telugu GPT architecture / checkpoint |
-| `telugu_voice_api.py`, `telugu_assistant.html` (repo root) | Legacy v8 (all-Gemini incl. Gemini TTS), kept for reference |
+| Hosting | Azure Container Apps, South India region, always-on (min 1 replica), managed TLS |
+| Image | [`voice-assistant/Dockerfile`](voice-assistant/Dockerfile): Python 3.11 slim, pinned dependencies, embedding model baked in for offline RAG |
+| Registry | Azure Container Registry, tagged by commit SHA and `latest` |
+| CI/CD | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): build on ACR, roll out to Container Apps on every push to `main` |
+| Secrets | GitHub Actions secrets injected as container environment variables |
+| Health | `GET /healthz` liveness probe; `GET /` reports version and knowledge-base status |
+
+<details>
+<summary><b>API reference</b></summary>
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/healthz` | Liveness probe |
+| GET | `/` | Service status: version, IST time, knowledge-base state |
+| GET | `/assistant` | Voice assistant web UI |
+| GET | `/docs` | OpenAPI documentation |
+| GET | `/debug` | Diagnostics for LLM, TTS and knowledge base |
+| GET | `/speak` | TTS smoke test |
+| POST | `/tts` | Text → Telugu audio |
+| POST | `/converse` | Audio + history → transcript, answer, audio |
+| POST | `/converse_stream` | `/converse` as Server-Sent Events |
+| POST | `/converse_text_stream` | Text + history → SSE (used by the web UI) |
+| POST | `/voice` | Single-turn audio in → audio out |
+
+> The knowledge base loads in the background from a ChromaDB volume at `/mnt/vehicledata`. If the volume is not mounted, the service keeps answering and `GET /` reports `"kb": "disabled"`. Check this after every deploy.
+
+</details>
 
 ---
 
-## Compression pipeline (Colab)
+## Research: Model Scaling Ladder
 
-[`compression/`](compression/README.md) takes a real pretrained 3B model through two stages:
-1. **LoRA Telugu fine-tune** (`finetune_telugu_3b.py`).
-2. **PrismML-style ternary QAT** (`ternary_qat_3b.py`): 6.4 GB → ~1.1 GB. This is the path to replacing the hosted LLM with our own model on the Jetson.
+A single GPT architecture, written from scratch in PyTorch, scaled across nine rungs on an **NVIDIA Jetson Orin Nano Super** and **Colab Pro A100-80GB**. Each rung has a model card in [`docs/model-cards/`](docs/model-cards/).
+
+| Rung | Parameters | Hardware | Final loss | Milestone |
+|:---:|---:|---|---:|---|
+| 1 | 984 | Jetson Orin | 0.175 | End-to-end training pipeline proven on edge hardware |
+| 2 | 990K | Jetson Orin | 0.016 | 1,000× scale-up |
+| 3 | 151M | Jetson + Colab T4 | 1.114 | First large model; bf16 training |
+| 4 | 399M | Colab A100 | — | Gradient checkpointing introduced |
+| 5 | 1B | Colab A100-80GB | — | First billion-parameter run |
+| 6 | 2B | Colab A100-80GB | — | 3.8 GB checkpoint |
+| 7 | 3B | Colab A100-80GB | 0.110 | Stable training at 3B |
+| 8 | **3.07B** | Colab A100-80GB | 0.098 | Maximum model size for a single A100-80GB |
+| 9 | 25M | Colab A100-80GB | 1.42 | **First real-language model: Telugu** |
+
+> **Reading the results:** rungs 1–8 are engineering experiments trained on a single repeated sentence. They prove we can train, checkpoint and serve models at each scale on our hardware; low loss there reflects memorisation, not language ability. Rung 9 is trained on real Telugu text (ai4bharat/samanantar) and generates coherent Telugu.
+
+**Conversational Telugu fine-tune:** 93,028 samples from maya-research/IndicVault, 3 epochs on A100-80GB, loss 2.17 → 0.76. Published as [`tiny-llm-telugu-conv`](https://huggingface.co/RishikUttejSasanala/tiny-llm-telugu-conv).
+
+---
+
+## Research: Compression for the Edge
+
+[`compression/`](compression/README.md) takes a real pretrained 3B model to a size that fits on-device:
+
+1. **Telugu LoRA fine-tune** ([`finetune_telugu_3b.py`](compression/finetune_telugu_3b.py)): teaches the model to answer in Yodha's style while training only ~1–3% of its weights.
+2. **Ternary quantisation-aware training** ([`ternary_qat_3b.py`](compression/ternary_qat_3b.py)): weights reduced to {−1, 0, +1} with distillation from the full model. **6.4 GB → ~1.1 GB.**
+
+This is the path to replacing the hosted LLM with our own model running offline on a Jetson.
 
 ---
 
 ## Roadmap
-- Replace Gemini with our own Telugu model (LoRA fine-tuned 3B → 4-bit / ternary)
-- Stream LLM tokens with sentence-level TTS for lower end-to-end latency
-- Mount and version the vehicle-manual knowledge base in IaC; add a retrieval eval set
-- Auth + rate limiting on the public API
-- Integrate into Paperclip / YODA platform
-- Offline edge deployment on Jetson Orin Nano
+
+| Priority | Initiative | Outcome |
+|---|---|---|
+| 1 | Own Telugu LLM (fine-tuned 3B → 4-bit / ternary) | Remove dependency on third-party LLM APIs |
+| 2 | Token streaming with sentence-level TTS | Lower end-to-end response latency |
+| 3 | Authentication and rate limiting on the public API | Production hardening |
+| 4 | Knowledge base in infrastructure-as-code, with a retrieval eval set | Reproducible, measurable answer quality |
+| 5 | Offline deployment on Jetson Orin Nano | Assistant runs with no cloud connection |
+| 6 | Integration into the Paperclip / YODA platform | Yodha available across our products |
 
 ---
 
-## Changelog
+## Repository Structure
 
-### v10 (current): Gemini + RAG on Azure Container Apps
-- Moved from Azure VM (systemd + Nginx + Let's Encrypt, `52.140.52.237.nip.io`) to **Azure Container Apps** with GitHub Actions CI/CD
-- LLM: Sarvam-105b → **Gemini** with a 3-model fallback chain and retry
-- STT: browser Web Speech API primary, Gemini fallback
-- TTS: gTTS with browser fallback
-- **RAG over vehicle manuals** (ChromaDB + multilingual-e5-small)
-- SSE streaming endpoints, barge-in, `/healthz`, `/debug`
-- Prompt now allows technical English (natural code-switching) and sizes answers to the question
+```
+├── voice-assistant/         Production service: FastAPI app, web UI, Dockerfile
+├── compression/             3B LoRA fine-tuning and ternary compression (Colab)
+├── research/
+│   ├── scaling/             Scaling ladder: training scripts, checkpoints, verification tests
+│   └── telugu/              From-scratch Telugu GPT
+├── docs/model-cards/        One model card per rung
+└── .github/workflows/       CI/CD to Azure Container Apps
+```
 
-### v8: all-Gemini
-- Gemini 2.0 Flash for STT, LLM and TTS (`gemini-2.0-flash-preview-tts`, voice "Aoede"); see `telugu_voice_api.py`
+Large checkpoints are hosted on [Hugging Face](https://huggingface.co/RishikUttejSasanala); smaller ones are tracked in this repo with Git LFS.
 
-### v4.2 (20 July 2026): Sarvam on Azure VM
-- Pipeline: Sarvam Saarika STT → Sarvam-105b LLM → Sarvam Bulbul TTS
-- Instant response cache: time, date and greetings answered in <100ms without hitting the LLM
-- Real-time context injection: current IST time, date and day of week in every response
-- Strict Telugu-only output: English words and `*`, `/`, `#`, `_` stripped before TTS
-- `max_tokens` reduced to 300 for faster responses
-- Web Audio API VAD. A shared audio element fixed mobile autoplay.
-- Infrastructure: Azure VM Standard D2s v3 (Ubuntu 24.04, South India), Nginx + Let's Encrypt, systemd
+<details>
+<summary><b>Release history</b></summary>
 
-### Fine-tuned conversational model
-- Trained on maya-research/IndicVault Telugu dataset (93,028 samples, 2M+ chunks)
-- 3 epochs on Colab A100-80GB, loss 2.17 → 0.76
-- Saved to HuggingFace: RishikUttejSasanala/tiny-llm-telugu-conv
+**v10 (current): Gemini + RAG on Azure Container Apps**
+- Migrated from a single Azure VM to Azure Container Apps with GitHub Actions CI/CD
+- Gemini LLM with a three-model fallback chain and retry
+- Browser speech recognition as primary STT; gTTS with browser fallback
+- Retrieval over vehicle manuals (ChromaDB + multilingual-e5-small)
+- SSE streaming, barge-in, health and diagnostics endpoints
+
+**v8: all-Gemini pipeline**
+- Gemini 2.0 Flash for speech-to-text, LLM and text-to-speech
+
+**v4.2: Sarvam on Azure VM**
+- Sarvam Saarika STT → Sarvam-105b LLM → Sarvam Bulbul TTS
+- Instant-response cache, real-time IST context, mobile autoplay fixes
+
+</details>
+
+---
+
+<div align="center">
+
+**Yodha AI** · SEVT Logistics Private Limited
+Built by Rishi Sasanala
+
+</div>

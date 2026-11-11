@@ -36,7 +36,7 @@ CSV: a header row with `question,answer` (or `instruction,output`, `prompt,respo
 ```python
 # Cell 1 — setup (Runtime -> A100 GPU)
 from google.colab import drive; drive.mount('/content/drive')
-!git clone -b claude/funny-thompson-o1yi7c https://github.com/SEVT-Logistics-Private-Limited/tiny-llm-jetson
+!git clone https://github.com/SEVT-Logistics-Private-Limited/tiny-llm-jetson
 !pip install -q transformers datasets accelerate peft bitsandbytes
 !huggingface-cli login            # Llama 3.2 is gated: accept its license on Hugging Face first
 
@@ -104,7 +104,7 @@ Use `--teacher /content/drive/MyDrive/telugu-3b/merged` to compress your Step 1 
 **Cell 1 — setup** (Runtime → A100 GPU, High-RAM)
 ```python
 from google.colab import drive; drive.mount('/content/drive')   # checkpoints survive disconnects
-!git clone -b claude/funny-thompson-o1yi7c https://github.com/SEVT-Logistics-Private-Limited/tiny-llm-jetson
+!git clone https://github.com/SEVT-Logistics-Private-Limited/tiny-llm-jetson
 !pip install -q transformers datasets accelerate bitsandbytes
 # private repo? clone with a GitHub token, or upload compression/ternary_qat_3b.py to Colab directly
 !huggingface-cli login
