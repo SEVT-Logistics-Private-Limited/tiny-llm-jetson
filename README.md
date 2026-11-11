@@ -62,7 +62,7 @@ flowchart LR
 | Stage | Primary | Fallback |
 |---|---|---|
 | Speech-to-text | Browser Web Speech API (`te-IN`) | Gemini audio transcription |
-| Language model | `gemini-3.6-flash` | `gemini-2.0-flash` → `gemini-1.5-flash` → graceful Telugu message |
+| Language model | `gemini-3.6-flash` | `gemini-3.5-flash-lite` → `gemini-2.5-flash-lite` → graceful Telugu message (chain overridable via `LLM_MODELS`) |
 | Knowledge | ChromaDB + `intfloat/multilingual-e5-small` | Answers without manual context |
 | Text-to-speech | gTTS Telugu | Browser `speechSynthesis` |
 

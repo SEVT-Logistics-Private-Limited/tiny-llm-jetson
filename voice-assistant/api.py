@@ -15,8 +15,12 @@ GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 
 gemini_client = google_genai.Client(api_key=GEMINI_KEY)
 
-# Ordered fallback chain — first model that returns non-null text wins
-LLM_MODELS = ["gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+# Ordered fallback chain — first model that returns non-null text wins.
+# Backups are from different model families so one retirement or outage
+# can't take out the whole chain. Override without a code change via
+# LLM_MODELS="model-a,model-b,...".
+DEFAULT_LLM_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite"]
+LLM_MODELS = [m.strip() for m in os.environ.get("LLM_MODELS", "").split(",") if m.strip()] or DEFAULT_LLM_MODELS
 
 import threading
 
