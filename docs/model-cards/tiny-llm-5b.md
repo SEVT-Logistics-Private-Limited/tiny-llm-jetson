@@ -22,5 +22,5 @@
 https://huggingface.co/RishikUttejSasanala/tiny-llm-5b
 
 ## Files (this repo)
-- tiny_llm_5b.py — training script
-- model-card-5b.md — this file
+- research/scaling/tiny_llm_5b.py — training script
+- docs/model-cards/tiny-llm-5b.md — this file
