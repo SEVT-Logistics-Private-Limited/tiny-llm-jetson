@@ -101,8 +101,8 @@ def verify_token(token: str, secret: str):
 class RateLimiter:
     """Sliding-window limiter. In-memory, so limits apply per replica."""
 
-    def __init__(self, max_calls: int, window_s: float):
-        self.max_calls, self.window_s = max_calls, window_s
+    def __init__(self, max_calls: int, window_s: float, max_keys: int = 10_000):
+        self.max_calls, self.window_s, self.max_keys = max_calls, window_s, max_keys
         self._hits = collections.defaultdict(collections.deque)
         self._lock = threading.Lock()
 
@@ -115,10 +115,45 @@ class RateLimiter:
             if len(q) >= self.max_calls:
                 return False
             q.append(now)
-            if len(self._hits) > 10_000:  # bound memory: drop idle keys
-                for k in [k for k, v in self._hits.items() if not v]:
+            if len(self._hits) > self.max_keys:  # bound memory: drop keys with no hit inside the window
+                cutoff = now - self.window_s
+                for k in [k for k, v in self._hits.items() if not v or v[-1] <= cutoff]:
                     del self._hits[k]
             return True
+
+
+class BodySizeLimitMiddleware:
+    """Reject oversized request bodies before they are read into memory. Field-level limits
+    only apply after the whole body has been parsed, and that happens before the login check,
+    so without this anyone could exhaust the server's memory with a few huge requests."""
+
+    def __init__(self, app, max_bytes: int):
+        self.app, self.max_bytes = app, max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        declared = dict(scope["headers"]).get(b"content-length", b"")
+        if declared.isdigit() and int(declared) > self.max_bytes:
+            body = b'{"detail":"Request too large"}'
+            await send({"type": "http.response.start", "status": 413,
+                        "headers": [(b"content-type", b"application/json"),
+                                    (b"content-length", str(len(body)).encode()),
+                                    (b"connection", b"close")]})
+            await send({"type": "http.response.body", "body": body})
+            return
+        received = 0
+
+        async def limited_receive():   # covers bodies sent without a Content-Length
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise HTTPException(413, "Request too large")
+            return message
+
+        await self.app(scope, limited_receive, send)
 
 
 def client_ip(request: Request) -> str:

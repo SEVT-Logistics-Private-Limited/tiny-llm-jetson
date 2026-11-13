@@ -157,3 +157,31 @@ def test_cors_closed_by_default():
 def test_no_credentials_in_frontend():
     html = open(os.path.join(os.path.dirname(HERE), "telugu_assistant.html"), encoding="utf-8").read()
     assert "VALID_PASS" not in html and "Yodhakit" not in html
+
+
+def test_oversized_body_rejected_before_parsing():
+    r = client.post("/tts", content=b"x" * (api.MAX_BODY_BYTES + 1), headers={"Content-Type": "application/json"})
+    assert r.status_code == 413
+
+
+def test_oversized_chunked_body_rejected():
+    def chunks():   # no Content-Length header
+        for _ in range(11):
+            yield b"x" * (1024 * 1024)
+    r = client.post("/tts", content=chunks(), headers={"Content-Type": "application/json"})
+    assert r.status_code == 413
+
+
+def test_normal_audio_sized_body_still_accepted():
+    r = client.post("/voice", json={"audio_base64": "A" * 6_000_000}, headers=bearer())
+    assert r.status_code == 200
+
+
+def test_rate_limiter_drops_stale_keys():
+    import time as _t
+    lim = auth.RateLimiter(max_calls=5, window_s=0.01, max_keys=50)
+    for i in range(50):
+        lim.allow(f"ip-{i}")
+    _t.sleep(0.05)
+    lim.allow("fresh-1"); lim.allow("fresh-2")
+    assert set(lim._hits) == {"fresh-1", "fresh-2"}

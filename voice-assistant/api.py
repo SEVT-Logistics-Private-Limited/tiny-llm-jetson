@@ -376,6 +376,10 @@ if _allowed_origins:
     app.add_middleware(CORSMiddleware, allow_origins=_allowed_origins,
                        allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
 
+# Largest legitimate request is ~8 MB of base64 audio plus history.
+MAX_BODY_BYTES = 10 * 1024 * 1024
+app.add_middleware(auth.BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
+
 DEBUG_ENABLED = os.environ.get("ENABLE_DEBUG") == "1"
 
 # Request size limits — bound cost and memory per request.
