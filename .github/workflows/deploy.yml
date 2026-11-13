@@ -41,6 +41,11 @@ jobs:
             if [ -z "${!v}" ]; then echo "::error::GitHub secret $v is not set"; missing=1; fi
           done
           if [ ${#YODHA_AUTH_SECRET} -lt 32 ]; then echo "::error::YODHA_AUTH_SECRET must be at least 32 characters"; missing=1; fi
+          # Every YODHA_USERS entry must be email:hash. A bare email would deploy an app nobody can log in to.
+          entry='^[^:, ]+@[^:, ]+:pbkdf2_sha256\$[0-9]+\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$'
+          if [ -n "$YODHA_USERS" ] && printf '%s' "$YODHA_USERS" | tr ',' '\n' | grep -qvE "$entry"; then
+            echo "::error::YODHA_USERS has an entry that is not in the form email:pbkdf2_sha256\$... (create entries with voice-assistant/auth.py hash)"; missing=1
+          fi
           exit $missing
 
       # Store keys as Container Apps secrets (not plain env vars), then reference them.
