@@ -228,13 +228,18 @@ def clean_for_display(text):
     lines = [re.sub(r'[ \t]+', ' ', l).strip() for l in text.split('\n')]
     return '\n'.join(l for l in lines if l)
 
+_PAREN_RE = re.compile(r'\([^()]*\)')
+_ENGLISH_WORD_RE = re.compile(r'[a-zA-Z]{4,}')
+
 def clean_for_tts(text):
     """Make text speakable by a Telugu voice. Applied only to the audio, never to what is shown."""
     text = re.sub(r'(?m)^\s*\d+[.)]\s+', '', text)        # numbered-list markers at line start only,
                                                            # so decimals like 3.5 survive
     text = re.sub(r'[*#_+|\[\]{}<>^~`\\]', '', text)
     text = text.replace('/', ' ')
-    spoken = re.sub(r'\([^)]*[a-zA-Z]{4,}[^)]*\)', '', text)  # (English explanations in brackets)
+    # Drop (English explanations in brackets). Two linear-time steps instead of one pattern
+    # with nested wildcards, which could be made slow by input with many unclosed brackets.
+    spoken = _PAREN_RE.sub(lambda m: '' if _ENGLISH_WORD_RE.search(m.group()) else m.group(), text)
     # Lines with no Telugu that are mostly English words are usually translations the model
     # appended; drop them from the audio only. Short specs like "SAE 5W-30" are kept.
     kept = [l for l in spoken.split('\n')

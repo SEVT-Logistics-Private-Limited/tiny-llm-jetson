@@ -114,3 +114,16 @@ def test_stt_receives_recording_mime(monkeypatch):
 # ── Models ───────────────────────────────────────────────────────────────────
 def test_retired_models_not_in_fallback_chain():
     assert api.LLM_MODELS and not {"gemini-2.0-flash", "gemini-1.5-flash"} & set(api.LLM_MODELS)
+
+
+def test_bracket_cleaning_is_fast_on_hostile_input():
+    import time
+    for hostile in ("(" * 4000, "(" + "abcd " * 800, "(abcd" * 800):
+        t = time.perf_counter()
+        api.clean_for_tts(hostile)
+        assert time.perf_counter() - t < 0.05
+
+
+def test_bracket_cleaning_keeps_numbers_drops_english():
+    t = api.clean_for_tts("టైర్ ప్రెజర్ 32 psi (Pounds per Square Inch) ఉండాలి, సామర్థ్యం (3.5) లీటర్లు.")
+    assert "Pounds" not in t and "(3.5)" in t

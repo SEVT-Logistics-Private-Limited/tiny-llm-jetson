@@ -30,7 +30,7 @@ import time
 from fastapi import Header, HTTPException, Request
 
 PBKDF2_ITERATIONS = 600_000
-MIN_SECRET_LEN = 32
+MIN_SIGNING_KEY_CHARS = 32
 
 
 def _b64e(raw: bytes) -> str:
@@ -171,8 +171,8 @@ class AuthConfig:
         self.users = parse_users(os.environ.get("YODHA_USERS", ""))
         self.secret = os.environ.get("YODHA_AUTH_SECRET", "")
         self.ttl = int(os.environ.get("YODHA_TOKEN_TTL", "43200"))
-        if len(self.secret) < MIN_SECRET_LEN:
-            print(f"auth: YODHA_AUTH_SECRET missing or shorter than {MIN_SECRET_LEN} chars — all logins refused", file=sys.stderr)
+        if len(self.secret) < MIN_SIGNING_KEY_CHARS:
+            print(f"auth: YODHA_AUTH_SECRET missing or shorter than {MIN_SIGNING_KEY_CHARS} chars — all logins refused", file=sys.stderr)
             self.secret = ""
         if not self.users:
             print("auth: YODHA_USERS empty — all logins refused", file=sys.stderr)
