@@ -53,7 +53,7 @@ flowchart LR
 
 ### Capabilities
 
-- **Natural conversation:** continuous voice loop with memory of the last 8 turns, and barge-in so users can interrupt.
+- **Natural conversation:** continuous voice loop with memory of the last 8 turns; tap while Yodha is speaking to interrupt.
 - **Grounded answers:** responses use the relevant vehicle-manual passage when one matches.
 - **Low latency:** common questions answered in under 100 ms without the LLM. Answers stream over SSE, and audio generation starts as soon as text arrives.
 - **Telugu-first output:** natural Telugu, with technical English allowed where people actually use it.
@@ -62,7 +62,7 @@ flowchart LR
 | Stage | Primary | Fallback |
 |---|---|---|
 | Speech-to-text | Browser Web Speech API (`te-IN`) | Gemini audio transcription |
-| Language model | `gemini-3.6-flash` | `gemini-2.0-flash` → `gemini-1.5-flash` → graceful Telugu message |
+| Language model | `gemini-3.6-flash` | `gemini-3.8-flash` → `gemini-3.5-flash-lite` → graceful Telugu message (override with `LLM_MODELS`) |
 | Knowledge | ChromaDB + `intfloat/multilingual-e5-small` | Answers without manual context |
 | Text-to-speech | gTTS Telugu | Browser `speechSynthesis` |
 
@@ -95,6 +95,7 @@ flowchart LR
 | POST | `/converse_stream` | `/converse` as Server-Sent Events |
 | POST | `/converse_text_stream` | Text + history → SSE (used by the web UI) |
 | POST | `/voice` | Single-turn audio in → audio out |
+| POST | `/feedback` | Post-call star rating, logged as a `FEEDBACK {json}` line |
 
 All endpoints except `/healthz`, `/`, `/assistant` and `/auth/login` require `Authorization: Bearer <token>`.
 
@@ -186,7 +187,7 @@ Large checkpoints are hosted on [Hugging Face](https://huggingface.co/RishikUtte
 - Gemini LLM with a three-model fallback chain and retry
 - Browser speech recognition as primary STT; gTTS with browser fallback
 - Retrieval over vehicle manuals (ChromaDB + multilingual-e5-small)
-- SSE streaming, barge-in, health and diagnostics endpoints
+- SSE streaming, tap-to-interrupt, health and diagnostics endpoints
 
 **v8: all-Gemini pipeline**
 - Gemini 2.0 Flash for speech-to-text, LLM and text-to-speech

@@ -1,12 +1,11 @@
 import base64, requests, os, re, io, traceback, json, time
-import concurrent.futures
 from google import genai as google_genai
 from google.genai import types as genai_types
 from gtts import gTTS
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Literal, Optional
 from datetime import datetime
 import pytz
@@ -17,8 +16,11 @@ GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 
 gemini_client = google_genai.Client(api_key=GEMINI_KEY)
 
-# Ordered fallback chain — first model that returns non-null text wins
-LLM_MODELS = ["gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+# Ordered fallback chain — first model that returns non-null text wins.
+# gemini-2.0-flash and gemini-1.5-flash have been shut down by Google, so they are not used.
+# Override without a code change: LLM_MODELS="model-a,model-b"
+LLM_MODELS = [m.strip() for m in os.environ.get(
+    "LLM_MODELS", "gemini-3.6-flash,gemini-3.8-flash,gemini-3.5-flash-lite").split(",") if m.strip()]
 
 import threading
 
@@ -158,12 +160,13 @@ def check_instant(text, ctx):
             return fn(ctx)
     return None
 
-def gemini_stt(audio_bytes):
-    """Transcribe Telugu audio using Gemini with model fallback."""
+def gemini_stt(audio_bytes, mime_type="audio/webm"):
+    """Transcribe Telugu audio using Gemini with model fallback.
+    mime_type must match the recording (Safari records audio/mp4, Chrome/Firefox audio/webm)."""
     contents = [
         genai_types.Content(parts=[
             genai_types.Part(
-                inline_data=genai_types.Blob(mime_type="audio/webm", data=audio_bytes)
+                inline_data=genai_types.Blob(mime_type=mime_type, data=audio_bytes)
             ),
             genai_types.Part(
                 text="Transcribe exactly what is spoken in Telugu in this audio. Return only the transcribed Telugu text, no explanations or translations."
@@ -177,20 +180,38 @@ def gemini_stt(audio_bytes):
     )
     return txt.strip() if txt else ""
 
+TELUGU_RE = re.compile(r'[\u0C00-\u0C7F]')
+
+def _telugu_count(text):
+    return len(TELUGU_RE.findall(text))
+
+def clean_for_display(text):
+    """Strip markdown formatting only. Keeps English, numbers, part names and line breaks,
+    because this is what the user reads and what goes into conversation history."""
+    text = text.replace('`', '')
+    text = re.sub(r'\*\*|__', '', text)                    # bold markers
+    text = re.sub(r'(?m)^\s*#+\s*', '', text)              # headings
+    text = re.sub(r'(?m)^\s*[*\-•]\s+', '', text)          # bullet markers
+    text = re.sub(r'(?<!\w)\*(?!\s)|(?<!\s)\*(?!\w)', '', text)  # stray single asterisks
+    lines = [re.sub(r'[ \t]+', ' ', l).strip() for l in text.split('\n')]
+    return '\n'.join(l for l in lines if l)
+
 def clean_for_tts(text):
-    text = re.sub(r'[*/#_+|\[\]{}<>^~`\\]', '', text)
-    text = re.sub(r'\([^)]*[a-zA-Z]{4,}[^)]*\)', '', text)  # remove (parenthetical English explanations)
-    text = re.sub(r'\b\d+\.\s*', '', text)  # remove numbered list markers
-    # Remove lines that are entirely English (no Telugu chars) — preserve code-switching
-    lines = text.split('\n')
-    kept = [l for l in lines if sum(1 for c in l if 'ఀ' <= c <= '౿') > 0 or not re.search(r'[a-zA-Z]{4,}', l)]
-    text = ' '.join(kept)
-    text = re.sub(r'[.,;:!?]{2,}', '.', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    telugu_count = sum(1 for c in text if 'ఀ' <= c <= '౿')
-    if telugu_count < 3:
-        return "మళ్ళీ చెప్పగలరా?"
-    return text
+    """Make text speakable by a Telugu voice. Applied only to the audio, never to what is shown."""
+    text = re.sub(r'(?m)^\s*\d+[.)]\s+', '', text)        # numbered-list markers at line start only,
+                                                           # so decimals like 3.5 survive
+    text = re.sub(r'[*#_+|\[\]{}<>^~`\\]', '', text)
+    text = text.replace('/', ' ')
+    spoken = re.sub(r'\([^)]*[a-zA-Z]{4,}[^)]*\)', '', text)  # (English explanations in brackets)
+    # Lines with no Telugu that are mostly English words are usually translations the model
+    # appended; drop them from the audio only. Short specs like "SAE 5W-30" are kept.
+    kept = [l for l in spoken.split('\n')
+            if _telugu_count(l) or len(re.findall(r'[a-zA-Z]{4,}', l)) < 4]
+    spoken = ' '.join(kept)
+    if _telugu_count(spoken) < 3:   # nothing Telugu left: speak the original rather than drop it
+        spoken = text.replace('\n', ' ')
+    spoken = re.sub(r'[,;:!?]{2,}|\.{2,}', '.', spoken)
+    return re.sub(r'\s+', ' ', spoken).strip()
 
 def build_system(ctx, manual_context=None):
     base = (
@@ -235,30 +256,35 @@ def telugu_llm(messages):
     )
     if raw:
         print(f"telugu_llm: response from model={model_used}")
-        return clean_for_tts(raw)
+        return clean_for_display(raw)
     print("telugu_llm: all models returned None — returning fallback")
     return "క్షమించాలి, మళ్ళీ అడగగలరా?"
 
-def _gtts_generate(text, tld):
-    tts = gTTS(text=text, lang='te', slow=False, tld=tld)
-    buf = io.BytesIO()
-    tts.write_to_fp(buf)
-    buf.seek(0)
-    return buf.read()
+MAX_TTS_CHARS = 4_000
+GTTS_TIMEOUT = (5, 10)   # (connect, read) seconds per HTTP request to Google
+
+def _truncate_at_sentence(text, limit):
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    end = max(cut.rfind(p) for p in ('. ', '? ', '! ', '।'))
+    return cut[:end + 1] if end > limit // 2 else cut
 
 def do_tts(text):
-    """TTS via gTTS with 15s server-side timeout and TLD fallback."""
-    text = text[:500]
+    """TTS via gTTS with a real per-request timeout and TLD fallback.
+    gTTS's own timeout aborts a stuck request; the old ThreadPoolExecutor approach waited
+    for the hung thread anyway when the `with` block exited, so its timeout never applied."""
+    text = _truncate_at_sentence(clean_for_tts(text), MAX_TTS_CHARS)
+    if not text:
+        raise ValueError("Nothing to speak")
     for tld in ('co.in', 'com'):
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                future = ex.submit(_gtts_generate, text, tld)
-                data = future.result(timeout=15)
+            buf = io.BytesIO()
+            gTTS(text=text, lang='te', slow=False, tld=tld, timeout=GTTS_TIMEOUT).write_to_fp(buf)
+            data = buf.getvalue()
             if not data:
                 raise ValueError("Empty gTTS output")
             return data, "audio/mpeg"
-        except concurrent.futures.TimeoutError:
-            print(f"gTTS timed out after 15s (tld={tld})")
         except Exception as e:
             print(f"gTTS failed (tld={tld}, {type(e).__name__}): {e}")
     raise RuntimeError("All gTTS attempts failed")
@@ -284,15 +310,30 @@ class Msg(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(max_length=4_000)
 
-class ConvReq(BaseModel):
-    audio_base64: str = Field(min_length=1, max_length=MAX_AUDIO_B64_CHARS)
-    history: Optional[List[Msg]] = Field(default=[], max_length=MAX_HISTORY_ITEMS)
-
-class TextReq(BaseModel):
-    text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
+AUDIO_MIME_TYPES = {"audio/webm", "audio/ogg", "audio/mp4", "audio/aac", "audio/mpeg", "audio/wav"}
 
 class AudioReq(BaseModel):
     audio_base64: str = Field(min_length=1, max_length=MAX_AUDIO_B64_CHARS)
+    mime_type: str = Field(default="audio/webm", max_length=64)
+
+    @field_validator("mime_type")
+    @classmethod
+    def _check_mime(cls, v):
+        base = v.split(";")[0].strip().lower()   # "audio/webm;codecs=opus" -> "audio/webm"
+        if base not in AUDIO_MIME_TYPES:
+            raise ValueError(f"unsupported audio type {base!r}")
+        return base
+
+class ConvReq(AudioReq):
+    history: Optional[List[Msg]] = Field(default=[], max_length=MAX_HISTORY_ITEMS)
+
+class TextReq(BaseModel):
+    text: str = Field(min_length=1, max_length=MAX_TTS_CHARS)
+
+class FeedbackReq(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    call_seconds: int = Field(default=0, ge=0, le=86_400)
+    turns: int = Field(default=0, ge=0, le=10_000)
 
 class TextConvReq(BaseModel):
     text: str = Field(max_length=MAX_TEXT_CHARS)
@@ -479,7 +520,7 @@ def tts(req: TextReq, user: str = Depends(require_user)):
 def converse(req: ConvReq, user: str = Depends(require_user)):
     try:
         ctx = get_context()
-        user_text = gemini_stt(base64.b64decode(req.audio_base64))
+        user_text = gemini_stt(base64.b64decode(req.audio_base64), req.mime_type)
         if not user_text.strip():
             raise HTTPException(400, "Empty transcript")
         instant = check_instant(user_text, ctx)
@@ -517,7 +558,7 @@ def converse_stream(req: ConvReq, user: str = Depends(require_user)):
     def generate():
         try:
             ctx = get_context()
-            user_text = gemini_stt(base64.b64decode(req.audio_base64))
+            user_text = gemini_stt(base64.b64decode(req.audio_base64), req.mime_type)
             if not user_text.strip():
                 yield _sse({"type": "error", "msg": "Empty transcript"})
                 return
@@ -602,11 +643,19 @@ def converse_text_stream(req: TextConvReq, user: str = Depends(require_user)):
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
     )
 
+@app.post("/feedback")
+def feedback(req: FeedbackReq, user: str = Depends(require_user)):
+    """Post-call star rating. Written as one JSON log line, queryable in Log Analytics:
+    ContainerAppConsoleLogs_CL | where Log_s startswith "FEEDBACK " """
+    print("FEEDBACK " + json.dumps({"user": user, "rating": req.rating, "call_seconds": req.call_seconds,
+                                    "turns": req.turns, "ts": int(time.time())}), flush=True)
+    return {"ok": True}
+
 @app.post("/voice")
 def voice(req: AudioReq, user: str = Depends(require_user)):
     try:
         ctx = get_context()
-        text = gemini_stt(base64.b64decode(req.audio_base64))
+        text = gemini_stt(base64.b64decode(req.audio_base64), req.mime_type)
         if not text.strip():
             raise HTTPException(400, "Empty transcript")
         instant = check_instant(text, ctx)

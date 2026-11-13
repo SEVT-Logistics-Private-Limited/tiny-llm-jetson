@@ -129,9 +129,10 @@ body{display:flex;align-items:center;justify-content:center;background:#0a0f0a}
 
 .msg{
   max-width:80%;padding:12px 16px;border-radius:18px;
-  font-size:14px;line-height:1.6;
+  font-size:14px;line-height:1.6;white-space:pre-line;
   animation:msgIn .2s ease-out;
 }
+.call-status-row.can-interrupt,.wave-bars.can-interrupt{cursor:pointer}
 @keyframes msgIn{
   from{opacity:0;transform:translateY(6px)}
   to{opacity:1;transform:translateY(0)}
@@ -310,13 +311,13 @@ body{display:flex;align-items:center;justify-content:center;background:#0a0f0a}
 
   <div class="conv-wrap" id="convWrap"></div>
 
-  <div class="call-status-row">
+  <div class="call-status-row" id="statusRow" onclick="interruptAI()" role="button" aria-label="Tap to interrupt Yodha">
     <div class="state-dot" id="stateDot"></div>
     <span class="state-label" id="stateLabel">Ready to talk</span>
   </div>
 
   <div class="waveform-area">
-    <div class="wave-bars" id="waveBars"></div>
+    <div class="wave-bars" id="waveBars" onclick="interruptAI()"></div>
     <div class="call-controls">
       <button class="ctrl" id="muteBtn" onclick="toggleMute()">
         <svg id="muteIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -455,9 +456,28 @@ function buildStars() {
     const b = document.createElement('button');
     b.className = 'star'; b.dataset.val = i;
     b.innerHTML = `<svg viewBox="0 0 24 24"><path class="sp" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
-    b.onclick = () => { document.querySelectorAll('.star').forEach(s => s.classList.toggle('filled', +s.dataset.val <= i)); };
+    b.setAttribute('aria-label', `${i} star${i > 1 ? 's' : ''}`);
+    b.onclick = () => {
+      document.querySelectorAll('.star').forEach(s => s.classList.toggle('filled', +s.dataset.val <= i));
+      sendFeedback(i);
+    };
     c.appendChild(b);
   }
+}
+
+function sendFeedback(rating) {
+  apiFetch('/feedback', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating, call_seconds: lastCall.seconds, turns: lastCall.turns }),
+    signal: AbortSignal.timeout(10000)
+  }).then(r => {
+    document.querySelector('.rating-q').textContent = r.ok ? 'Thanks for your feedback!' : 'How was your conversation?';
+  }).catch(() => {});
+}
+
+function resetRating() {
+  document.querySelectorAll('.star').forEach(s => s.classList.remove('filled'));
+  document.querySelector('.rating-q').textContent = 'How was your conversation?';
 }
 
 function buildWaveBars() {
@@ -494,6 +514,10 @@ let timerInterval = null, callSeconds = 0;
 let sharedAudio = new Audio();
 sharedAudio.playsInline = true;
 let isPlayingAI = false;
+let currentState = 'idle';
+let turnId = 0;               // bumped on interrupt/end; stale async playback checks it and bails
+let pendingPlayResolve = null; // resolves the in-flight playAudioB64 promise when interrupted
+let lastCall = { seconds: 0, turns: 0 };
 
 // ── Navigation ──
 function showScreen(id) {
@@ -552,6 +576,7 @@ async function greetUser() {
 
   addMessage('ai', greeting);
   setState('speaking');
+  const myTurn = turnId;
   let greetingPlayed = false;
   try {
     const r = await apiFetch(`/tts`, {
@@ -560,12 +585,17 @@ async function greetUser() {
     });
     if (r.ok) { const d = await r.json(); await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg'); greetingPlayed = true; }
   } catch(e) { console.warn('greeting tts error:', e); }
+  if (myTurn !== turnId) return;  // user interrupted; interruptAI already started listening
   if (!greetingPlayed && !userStopped) await speakWithBrowser(greeting);
+  if (myTurn !== turnId) return;
   if (!userStopped) startListening();
 }
 
 function endCall() {
+  lastCall = { seconds: callSeconds, turns: history.filter(m => m.role === 'user').length };
   userStopped = true;
+  turnId++;
+  if (pendingPlayResolve) { pendingPlayResolve(false); pendingPlayResolve = null; }
   clearInterval(timerInterval);
   sharedAudio.pause(); sharedAudio.currentTime = 0;
   isPlayingAI = false;
@@ -573,10 +603,10 @@ function endCall() {
   if (recognition) { try { recognition.abort(); } catch(e) {} recognition = null; }
   if (rec?.state === 'recording') rec.stop();
   cleanupMonitor();
-  stopBargein();
   cancelAnimationFrame(waveRAF);
   history = [];
   setState('idle');
+  resetRating();
   showScreen('postcall');
 }
 
@@ -601,10 +631,14 @@ function updateTimer() {
 // ── UI state ──
 function setState(state) {
   const dot = document.getElementById('stateDot');
+  currentState = state;
   dot.className = 'state-dot' + (state !== 'idle' ? ' ' + state : '');
+  const canInterrupt = state === 'speaking';
+  document.getElementById('statusRow').classList.toggle('can-interrupt', canInterrupt);
+  document.getElementById('waveBars').classList.toggle('can-interrupt', canInterrupt);
   if (state !== 'listening') {
     document.getElementById('stateLabel').textContent =
-      {thinking:'Thinking…', speaking:'Speaking…', idle:'Ready to talk'}[state] || 'Ready to talk';
+      {thinking:'Thinking…', speaking:'Speaking… tap to interrupt', idle:'Ready to talk'}[state] || 'Ready to talk';
   } else {
     document.getElementById('stateLabel').textContent = 'Listening…';
   }
@@ -743,7 +777,9 @@ async function startAudioRecording() {
   chunks = []; hasSpoken = false; endedByTimeout = false;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    rec = new MediaRecorder(stream);
+    const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+    const mt = preferred.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+    rec = mt ? new MediaRecorder(stream, { mimeType: mt }) : new MediaRecorder(stream);
     rec.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
     rec.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
@@ -785,7 +821,8 @@ async function startAudioRecording() {
 async function processAudio() {
   if (!chunks.length) { setState('idle'); if (!userStopped) startListening(); return; }
   setState('thinking');
-  const blob = new Blob(chunks, { type: 'audio/webm' });
+  const mimeType = (rec && rec.mimeType) || 'audio/webm';  // Safari records audio/mp4
+  const blob = new Blob(chunks, { type: mimeType });
   const b64 = await new Promise(res => {
     const r = new FileReader();
     r.onloadend = () => res(r.result.split(',')[1]);
@@ -795,7 +832,7 @@ async function processAudio() {
     const resp = await apiFetch(`/converse_stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audio_base64: b64, history }),
+      body: JSON.stringify({ audio_base64: b64, mime_type: mimeType.split(';')[0], history }),
       signal: AbortSignal.timeout(45000)
     });
     if (!resp.ok) throw new Error(`${resp.status}`);
@@ -849,8 +886,9 @@ async function handleSSE(ev, textMode, sseState = {}) {
         });
       }
       break;
-    case 'done':
+    case 'done': {
       if (ev.history) history = ev.history;
+      const myTurn = turnId;
       if (sseState.lastResponse && !muted && !userStopped) {
         try {
           const r = await (sseState.ttsFetch || apiFetch(`/tts`, {
@@ -859,21 +897,25 @@ async function handleSSE(ev, textMode, sseState = {}) {
             body: JSON.stringify({text: sseState.lastResponse}),
             signal: AbortSignal.timeout(30000)
           }));
+          if (myTurn !== turnId) break;  // interrupted while audio was loading
           if (r.ok) {
             const d = await r.json();
+            if (myTurn !== turnId) break;
             const played = await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg');
-            if (!played) await speakWithBrowser(sseState.lastResponse);
+            if (!played && myTurn === turnId) await speakWithBrowser(sseState.lastResponse);
           } else {
             await speakWithBrowser(sseState.lastResponse);
           }
         } catch(e) {
-          await speakWithBrowser(sseState.lastResponse);
+          if (myTurn === turnId) await speakWithBrowser(sseState.lastResponse);
         }
       }
       sseState.ttsFetch = null;
+      if (myTurn !== turnId) break;  // interruptAI already switched to listening
       setState('idle');
       if (!userStopped) setTimeout(() => startListening(), 200);
       break;
+    }
     case 'error':
       sseState.ttsFetch = null;
       addMessage('ai', `⚠ ${ev.msg || 'Something went wrong'}`);
@@ -883,51 +925,22 @@ async function handleSSE(ev, textMode, sseState = {}) {
   }
 }
 
-// ── Barge-in ──
-let bargeinCtx = null, bargeinRAF = null;
-async function startBargein() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    bargeinCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const src = bargeinCtx.createMediaStreamSource(stream);
-    const an = bargeinCtx.createAnalyser();
-    an.fftSize = 256;
-    src.connect(an);
-    const fd = new Uint8Array(an.frequencyBinCount);
-    let consecutive = 0;
-    function check() {
-      an.getByteFrequencyData(fd);
-      const avg = fd.reduce((a,b)=>a+b,0)/fd.length;
-      consecutive = avg > 18 ? consecutive + 1 : 0;
-      if (consecutive >= 4) {
-        stopAI();
-        stream.getTracks().forEach(t=>t.stop());
-        try { bargeinCtx.close(); } catch(e) {}
-        bargeinCtx = null;
-        startListening();
-        return;
-      }
-      bargeinRAF = requestAnimationFrame(check);
-    }
-    check();
-    bargeinCtx._stream = stream;
-  } catch(e) {}
-}
-
-function stopBargein() {
-  cancelAnimationFrame(bargeinRAF);
-  if (bargeinCtx) {
-    if (bargeinCtx._stream) bargeinCtx._stream.getTracks().forEach(t=>t.stop());
-    try { bargeinCtx.close(); } catch(e) {}
-    bargeinCtx = null;
-  }
+// ── Interrupt (tap while Yodha is speaking) ──
+// Voice-activated barge-in was never wired up: with speakers on, the mic hears Yodha's own
+// voice and interrupts itself, and on iOS opening the mic moves audio to the earpiece.
+// Tapping is reliable on every device.
+function interruptAI() {
+  if (currentState !== 'speaking' || userStopped) return;
+  turnId++;
+  stopAI();
+  startListening();
 }
 
 function stopAI() {
   sharedAudio.pause();
   sharedAudio.currentTime = 0;
   isPlayingAI = false;
-  stopBargein();
+  if (pendingPlayResolve) { pendingPlayResolve(true); pendingPlayResolve = null; }
   try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(e) {}
 }
 
@@ -940,7 +953,9 @@ function cleanupMonitor() {
 
 // ── Audio playback ──
 function playAudioB64(b64, contentType = 'audio/mpeg') {
-  return new Promise(res => {
+  return new Promise(resolve => {
+    const res = v => { if (pendingPlayResolve === resolve) pendingPlayResolve = null; resolve(v); };
+    pendingPlayResolve = resolve;
     try {
       const bytes = atob(b64);
       const buf = new Uint8Array(bytes.length);

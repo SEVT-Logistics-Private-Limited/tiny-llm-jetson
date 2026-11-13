@@ -36,7 +36,7 @@ def _reset(monkeypatch):
     monkeypatch.setattr(api, "telugu_llm", lambda msgs: "సరే, ఇదిగో జవాబు.")
     monkeypatch.setattr(api, "do_tts", lambda text: (b"mp3", "audio/mpeg"))
     monkeypatch.setattr(api, "retrieve_manual_context", lambda q: None)
-    monkeypatch.setattr(api, "gemini_stt", lambda b: "హలో")
+    monkeypatch.setattr(api, "gemini_stt", lambda b, mime="audio/webm": "హలో")
 
 
 def login(email=EMAIL, password=PASSWORD):
@@ -81,6 +81,7 @@ PROTECTED = [
     ("post", "/voice", {"audio_base64": "AAAA"}),
     ("get", "/speak", None),
     ("get", "/debug", None),
+    ("post", "/feedback", {"rating": 5, "call_seconds": 42, "turns": 3}),
 ]
 
 
@@ -126,7 +127,8 @@ def test_api_rate_limited_per_user():
 # ── Input validation ─────────────────────────────────────────────────────────
 def test_oversized_inputs_rejected():
     h = bearer()
-    assert client.post("/tts", json={"text": "అ" * 2_001}, headers=h).status_code == 422
+    assert client.post("/tts", json={"text": "అ" * (api.MAX_TTS_CHARS + 1)}, headers=h).status_code == 422
+    assert client.post("/converse_text_stream", json={"text": "అ" * 2_001}, headers=h).status_code == 422
     big_history = [{"role": "user", "content": "x"}] * 21
     assert client.post("/converse_text_stream", json={"text": "హలో", "history": big_history}, headers=h).status_code == 422
 
