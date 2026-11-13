@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small')"
 
 # App code
-COPY voice-assistant/api.py .
+COPY voice-assistant/api.py voice-assistant/auth.py ./
 
 # HTML served at /assistant — path hardcoded in api.py
 COPY voice-assistant/telugu_assistant.html /home/azureuser/telugu_assistant.html

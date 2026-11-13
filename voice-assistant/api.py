@@ -3,13 +3,15 @@ import concurrent.futures
 from google import genai as google_genai
 from google.genai import types as genai_types
 from gtts import gTTS
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import List, Literal, Optional
 from datetime import datetime
 import pytz
+import auth
+from auth import require_user
 
 GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 
@@ -261,26 +263,53 @@ def do_tts(text):
             print(f"gTTS failed (tld={tld}, {type(e).__name__}): {e}")
     raise RuntimeError("All gTTS attempts failed")
 
-app = FastAPI(title="Telugu Voice AI", version="10.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="Telugu Voice AI", version="10.1")
+
+# The web UI is served from this same origin, so no CORS is needed by default.
+# Set ALLOWED_ORIGINS (comma-separated) only if another site must call this API.
+_allowed_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if _allowed_origins:
+    app.add_middleware(CORSMiddleware, allow_origins=_allowed_origins,
+                       allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
+
+DEBUG_ENABLED = os.environ.get("ENABLE_DEBUG") == "1"
+
+# Request size limits — bound cost and memory per request.
+HISTORY_TURNS = 8                 # messages sent to the LLM and echoed back to the client
+MAX_TEXT_CHARS = 2_000
+MAX_AUDIO_B64_CHARS = 8_000_000   # ≈ 6 MB of audio
+MAX_HISTORY_ITEMS = 20
 
 class Msg(BaseModel):
-    role: str
-    content: str
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=4_000)
 
 class ConvReq(BaseModel):
-    audio_base64: str
-    history: Optional[List[Msg]] = []
+    audio_base64: str = Field(min_length=1, max_length=MAX_AUDIO_B64_CHARS)
+    history: Optional[List[Msg]] = Field(default=[], max_length=MAX_HISTORY_ITEMS)
 
 class TextReq(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
 
 class AudioReq(BaseModel):
-    audio_base64: str
+    audio_base64: str = Field(min_length=1, max_length=MAX_AUDIO_B64_CHARS)
 
 class TextConvReq(BaseModel):
-    text: str
-    history: Optional[List[Msg]] = []
+    text: str = Field(max_length=MAX_TEXT_CHARS)
+    history: Optional[List[Msg]] = Field(default=[], max_length=MAX_HISTORY_ITEMS)
+
+class LoginReq(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
+
+@app.post("/auth/login")
+def login(req: LoginReq, request: Request):
+    if not auth.login_limiter.allow(auth.client_ip(request)):
+        raise HTTPException(429, "Too many login attempts. Try again in a minute.")
+    if not auth.config.authenticate(req.email, req.password):
+        raise HTTPException(401, "Incorrect email or password.")
+    token, exp = auth.issue_token(req.email.strip().lower(), auth.config.secret, auth.config.ttl)
+    return {"token": token, "expires_at": exp}
 
 @app.get("/healthz")
 def healthz():
@@ -301,8 +330,11 @@ def assistant():
     )
 
 @app.get("/debug")
-def debug():
-    """Diagnostic endpoint — tests LLM, Gemini TTS, and gTTS independently."""
+def debug(user: str = Depends(require_user)):
+    """Diagnostic endpoint — tests LLM, Gemini TTS, and gTTS independently.
+    Costs ~11 Gemini calls per hit: disabled unless ENABLE_DEBUG=1, and login required."""
+    if not DEBUG_ENABLED:
+        raise HTTPException(404, "Not found")
     result = {}
 
     # Test each LLM model: once without system_instruction, once with (to detect support)
@@ -425,7 +457,7 @@ def debug():
 
 
 @app.get("/speak")
-def speak():
+def speak(user: str = Depends(require_user)):
     """Test TTS endpoint — plays a greeting without needing STT."""
     try:
         audio, content_type = do_tts("నమస్కారం! నేను యోధను. మీకు ఎలా సహాయం చేయగలను?")
@@ -435,7 +467,7 @@ def speak():
         raise HTTPException(500, "Internal server error")
 
 @app.post("/tts")
-def tts(req: TextReq):
+def tts(req: TextReq, user: str = Depends(require_user)):
     try:
         audio, content_type = do_tts(req.text)
         return {"audio_base64": base64.b64encode(audio).decode(), "content_type": content_type}
@@ -444,7 +476,7 @@ def tts(req: TextReq):
         raise HTTPException(500, "Internal server error")
 
 @app.post("/converse")
-def converse(req: ConvReq):
+def converse(req: ConvReq, user: str = Depends(require_user)):
     try:
         ctx = get_context()
         user_text = gemini_stt(base64.b64decode(req.audio_base64))
@@ -457,10 +489,10 @@ def converse(req: ConvReq):
             history.append({"role": "user", "content": user_text})
             history.append({"role": "assistant", "content": instant})
             return {"transcript": user_text, "response": instant,
-                    "audio_base64": base64.b64encode(audio).decode(), "content_type": ct, "history": history}
+                    "audio_base64": base64.b64encode(audio).decode(), "content_type": ct, "history": history[-HISTORY_TURNS:]}
         manual_ctx = retrieve_manual_context(user_text)
         msgs = [{"role": "system", "content": build_system(ctx, manual_ctx)}]
-        for m in (req.history or [])[-8:]:
+        for m in (req.history or [])[-HISTORY_TURNS:]:
             msgs.append({"role": m.role, "content": m.content})
         msgs.append({"role": "user", "content": user_text})
         response = telugu_llm(msgs)
@@ -469,7 +501,7 @@ def converse(req: ConvReq):
         history.append({"role": "user", "content": user_text})
         history.append({"role": "assistant", "content": response})
         return {"transcript": user_text, "response": response,
-                "audio_base64": base64.b64encode(audio).decode(), "content_type": ct, "history": history}
+                "audio_base64": base64.b64encode(audio).decode(), "content_type": ct, "history": history[-HISTORY_TURNS:]}
     except HTTPException:
         raise
     except Exception as e:
@@ -477,7 +509,7 @@ def converse(req: ConvReq):
         raise HTTPException(500, "Internal server error")
 
 @app.post("/converse_stream")
-def converse_stream(req: ConvReq):
+def converse_stream(req: ConvReq, user: str = Depends(require_user)):
     """SSE streaming endpoint: emits transcript → response text → audio in order."""
     def _sse(obj):
         return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
@@ -497,7 +529,7 @@ def converse_stream(req: ConvReq):
             if not instant:
                 manual_ctx = retrieve_manual_context(user_text)
                 msgs = [{"role": "system", "content": build_system(ctx, manual_ctx)}]
-                for m in (req.history or [])[-8:]:
+                for m in (req.history or [])[-HISTORY_TURNS:]:
                     msgs.append({"role": m.role, "content": m.content})
                 msgs.append({"role": "user", "content": user_text})
                 try:
@@ -512,7 +544,7 @@ def converse_stream(req: ConvReq):
             hist = [{"role": m.role, "content": m.content} for m in (req.history or [])]
             hist.append({"role": "user", "content": user_text})
             hist.append({"role": "assistant", "content": response_text})
-            yield _sse({"type": "done", "history": hist})
+            yield _sse({"type": "done", "history": hist[-HISTORY_TURNS:]})
         except Exception as e:
             print(f"ERROR in /converse_stream ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
             yield _sse({"type": "error", "msg": "Request failed. Please try again."})
@@ -524,7 +556,7 @@ def converse_stream(req: ConvReq):
     )
 
 @app.post("/converse_text_stream")
-def converse_text_stream(req: TextConvReq):
+def converse_text_stream(req: TextConvReq, user: str = Depends(require_user)):
     """SSE streaming for pre-transcribed text — skips STT for lower latency."""
     def _sse(obj):
         return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
@@ -544,7 +576,7 @@ def converse_text_stream(req: TextConvReq):
             if not instant:
                 manual_ctx = retrieve_manual_context(user_text)
                 msgs = [{"role": "system", "content": build_system(ctx, manual_ctx)}]
-                for m in (req.history or [])[-8:]:
+                for m in (req.history or [])[-HISTORY_TURNS:]:
                     msgs.append({"role": m.role, "content": m.content})
                 msgs.append({"role": "user", "content": user_text})
                 try:
@@ -559,7 +591,7 @@ def converse_text_stream(req: TextConvReq):
             hist = [{"role": m.role, "content": m.content} for m in (req.history or [])]
             hist.append({"role": "user", "content": user_text})
             hist.append({"role": "assistant", "content": response_text})
-            yield _sse({"type": "done", "history": hist})
+            yield _sse({"type": "done", "history": hist[-HISTORY_TURNS:]})
         except Exception as e:
             print(f"ERROR in /converse_text_stream ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
             yield _sse({"type": "error", "msg": "Request failed. Please try again."})
@@ -571,7 +603,7 @@ def converse_text_stream(req: TextConvReq):
     )
 
 @app.post("/voice")
-def voice(req: AudioReq):
+def voice(req: AudioReq, user: str = Depends(require_user)):
     try:
         ctx = get_context()
         text = gemini_stt(base64.b64decode(req.audio_base64))
@@ -589,6 +621,8 @@ def voice(req: AudioReq):
         audio, ct = do_tts(response)
         return {"transcript": text, "response": response,
                 "audio_base64": base64.b64encode(audio).decode(), "content_type": ct}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"ERROR in /voice: {traceback.format_exc()}")
         raise HTTPException(500, "Internal server error")

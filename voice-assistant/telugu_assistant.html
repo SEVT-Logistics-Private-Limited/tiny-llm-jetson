@@ -353,26 +353,78 @@ body{display:flex;align-items:center;justify-content:center;background:#0a0f0a}
 </div>
 
 <script>
-const API = "https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontainerapps.io";
-const VALID_EMAIL = "yodhakit@gmail.com";
-const VALID_PASS  = "Yodhakit";
+const API = "";  // same origin as the server that serves this page
 const N_BARS = 9;
 const HAS_STT = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
 // ── Auth ──
-function doLogin() {
+// The server checks the password and returns a signed, expiring token.
+// Every API call sends it; a 401 sends the user back to the login screen.
+const TOKEN_KEY = 'yodha_token', TOKEN_EXP_KEY = 'yodha_token_exp';
+
+function getToken() {
+  try {
+    const t = localStorage.getItem(TOKEN_KEY);
+    const exp = +localStorage.getItem(TOKEN_EXP_KEY);
+    if (t && exp * 1000 > Date.now()) return t;
+  } catch(e) {}
+  return null;
+}
+
+function clearToken() {
+  try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(TOKEN_EXP_KEY); localStorage.removeItem('yodha_auth'); } catch(e) {}
+}
+
+function logout(message) {
+  clearToken();
+  if (document.getElementById('call').classList.contains('active')) endCall();
+  document.getElementById('loginError').textContent = message || '';
+  showScreen('login');
+}
+
+async function apiFetch(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  const t = getToken();
+  if (t) headers['Authorization'] = `Bearer ${t}`;
+  const r = await fetch(`${API}${path}`, { ...opts, headers });
+  if (r.status === 401) {
+    logout('Your session has expired. Please sign in again.');
+    throw new Error('Not authenticated');
+  }
+  return r;
+}
+
+let loginPending = false;
+async function doLogin() {
+  if (loginPending) return;
   const email = document.getElementById('loginEmail').value.trim().toLowerCase();
   const pass  = document.getElementById('loginPassword').value;
   const err   = document.getElementById('loginError');
-  if (email === VALID_EMAIL && pass === VALID_PASS) {
-    try { localStorage.setItem('yodha_auth', '1'); } catch(e) {}
-    err.textContent = '';
-    unlockAudio();
-    showScreen('home');
-    warmup();
-  } else {
-    err.textContent = 'Incorrect email or password.';
-    document.getElementById('loginPassword').value = '';
+  const btn   = document.querySelector('.login-btn');
+  if (!email || !pass) { err.textContent = 'Enter your email and password.'; return; }
+  loginPending = true; btn.disabled = true; btn.textContent = 'Signing in…'; err.textContent = '';
+  unlockAudio();  // must run inside the user gesture (iOS)
+  try {
+    const r = await fetch(`${API}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass }), signal: AbortSignal.timeout(15000)
+    });
+    if (r.ok) {
+      const d = await r.json();
+      try { localStorage.setItem(TOKEN_KEY, d.token); localStorage.setItem(TOKEN_EXP_KEY, String(d.expires_at)); } catch(e) {}
+      document.getElementById('loginPassword').value = '';
+      showScreen('home');
+      warmup();
+    } else if (r.status === 429) {
+      err.textContent = 'Too many attempts. Please wait a minute.';
+    } else {
+      err.textContent = 'Incorrect email or password.';
+      document.getElementById('loginPassword').value = '';
+    }
+  } catch(e) {
+    err.textContent = 'Cannot reach the server. Check your connection.';
+  } finally {
+    loginPending = false; btn.disabled = false; btn.textContent = 'Sign In';
   }
 }
 document.addEventListener('keydown', e => {
@@ -381,8 +433,8 @@ document.addEventListener('keydown', e => {
 
 // ── Init ──
 (function init() {
-  let ok = false;
-  try { ok = localStorage.getItem('yodha_auth') === '1'; } catch(e) {}
+  const ok = !!getToken();
+  if (!ok) clearToken();
   showScreen(ok ? 'home' : 'login');
   if (ok) warmup();
   setGreeting();
@@ -452,7 +504,7 @@ function showScreen(id) {
 // ── Warmup ──
 async function warmup() {
   try {
-    const r = await fetch(`${API}/healthz`, { signal: AbortSignal.timeout(12000) });
+    const r = await apiFetch(`/healthz`, { signal: AbortSignal.timeout(12000) });
     if (r.ok) {
       document.getElementById('warmupDot').classList.add('ready');
       document.getElementById('warmupLabel').textContent = 'Ready';
@@ -466,7 +518,7 @@ async function testSound() {
   btn.classList.add('testing'); btn.textContent = 'Loading…';
   try {
     unlockAudio();
-    const r = await fetch(`${API}/speak`, { signal: AbortSignal.timeout(30000) });
+    const r = await apiFetch(`/speak`, { signal: AbortSignal.timeout(30000) });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
     await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg');
@@ -502,7 +554,7 @@ async function greetUser() {
   setState('speaking');
   let greetingPlayed = false;
   try {
-    const r = await fetch(`${API}/tts`, {
+    const r = await apiFetch(`/tts`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({text: greeting}), signal: AbortSignal.timeout(30000)
     });
@@ -669,7 +721,7 @@ async function processText(text) {
   setState('thinking');
 
   try {
-    const resp = await fetch(`${API}/converse_text_stream`, {
+    const resp = await apiFetch(`/converse_text_stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, history }),
@@ -740,7 +792,7 @@ async function processAudio() {
     r.readAsDataURL(blob);
   });
   try {
-    const resp = await fetch(`${API}/converse_stream`, {
+    const resp = await apiFetch(`/converse_stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ audio_base64: b64, history }),
@@ -789,7 +841,7 @@ async function handleSSE(ev, textMode, sseState = {}) {
       setState('speaking');
       // Kick off TTS fetch immediately — runs in parallel while SSE stream finishes
       if (!muted && !userStopped) {
-        sseState.ttsFetch = fetch(`${API}/tts`, {
+        sseState.ttsFetch = apiFetch(`/tts`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({text: ev.text}),
@@ -801,7 +853,7 @@ async function handleSSE(ev, textMode, sseState = {}) {
       if (ev.history) history = ev.history;
       if (sseState.lastResponse && !muted && !userStopped) {
         try {
-          const r = await (sseState.ttsFetch || fetch(`${API}/tts`, {
+          const r = await (sseState.ttsFetch || apiFetch(`/tts`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({text: sseState.lastResponse}),
