@@ -53,16 +53,16 @@ flowchart LR
 
 ### Capabilities
 
-- **Natural conversation:** continuous voice loop with memory of the last 8 turns, and barge-in so users can interrupt.
+- **Natural conversation:** continuous voice loop with memory of the last 8 turns; tap while Yodha is speaking to interrupt.
 - **Grounded answers:** responses use the relevant vehicle-manual passage when one matches.
-- **Low latency:** common questions answered in under 100 ms without the LLM. Answers stream over SSE, and audio generation starts as soon as text arrives.
+- **Low latency:** common questions answered in under 100 ms without the LLM. Answers stream over SSE sentence by sentence, and each sentence is spoken as soon as it is written.
 - **Telugu-first output:** natural Telugu, with technical English allowed where people actually use it.
 - **Resilient by design:** every stage has a fallback, so a single provider failure never takes the assistant down.
 
 | Stage | Primary | Fallback |
 |---|---|---|
 | Speech-to-text | Browser Web Speech API (`te-IN`) | Gemini audio transcription |
-| Language model | `gemini-3.6-flash` | `gemini-2.0-flash` → `gemini-1.5-flash` → graceful Telugu message |
+| Language model | `gemini-3.6-flash` | `gemini-3.8-flash` → `gemini-3.5-flash-lite` → graceful Telugu message (override with `LLM_MODELS`) |
 | Knowledge | ChromaDB + `intfloat/multilingual-e5-small` | Answers without manual context |
 | Text-to-speech | gTTS Telugu | Browser `speechSynthesis` |
 
@@ -74,7 +74,8 @@ flowchart LR
 | Image | [`voice-assistant/Dockerfile`](voice-assistant/Dockerfile): Python 3.11 slim, pinned dependencies, embedding model baked in for offline RAG |
 | Registry | Azure Container Registry, tagged by commit SHA and `latest` |
 | CI/CD | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): build on ACR, roll out to Container Apps on every push to `main` |
-| Secrets | GitHub Actions secrets injected as container environment variables |
+| Secrets | GitHub Actions secrets stored as Container Apps secrets (`secretref:`), never plain env vars |
+| Access | Server-side login, signed expiring tokens on every API call, per-IP and per-user rate limits |
 | Health | `GET /healthz` liveness probe; `GET /` reports version and knowledge-base status |
 
 <details>
@@ -82,21 +83,41 @@ flowchart LR
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/healthz` | Liveness probe |
-| GET | `/` | Service status: version, IST time, knowledge-base state |
+| POST | `/auth/login` | Email + password → signed token (rate-limited per IP) |
+| GET | `/healthz` | Liveness probe (public) |
+| GET | `/` | Service status: version, IST time, knowledge-base state (public) |
 | GET | `/assistant` | Voice assistant web UI |
 | GET | `/docs` | OpenAPI documentation |
-| GET | `/debug` | Diagnostics for LLM, TTS and knowledge base |
+| GET | `/debug` | Diagnostics for LLM, TTS and knowledge base (off unless `ENABLE_DEBUG=1`) |
 | GET | `/speak` | TTS smoke test |
 | POST | `/tts` | Text → Telugu audio |
 | POST | `/converse` | Audio + history → transcript, answer, audio |
 | POST | `/converse_stream` | `/converse` as Server-Sent Events |
 | POST | `/converse_text_stream` | Text + history → SSE (used by the web UI) |
 | POST | `/voice` | Single-turn audio in → audio out |
+| POST | `/feedback` | Post-call star rating, logged as a `FEEDBACK {json}` line |
+
+**Tuning the manual search.** The Telugu question is searched directly; only on a miss is it translated to English and searched again (one extra LLM call). Every search logs a `rag: {...}` line with both distances, and every turn logs a `timing: {...}` line. Settings: `RAG_DISTANCE_THRESHOLD` (default 0.35), `RAG_SKIP_TRANSLATE_ABOVE` (unset by default; set it from the logs to skip the translation for clearly unrelated questions), `TRANSLATE_MODELS`, `LLM_MODELS`.
+
+All endpoints except `/healthz`, `/`, `/assistant` and `/auth/login` require `Authorization: Bearer <token>`.
 
 > The knowledge base loads in the background from a ChromaDB volume at `/mnt/vehicledata`. If the volume is not mounted, the service keeps answering and `GET /` reports `"kb": "disabled"`. Check this after every deploy.
 
 </details>
+
+### Access control setup
+
+Users are invite-only: there is no sign-up. Accounts live in the `YODHA_USERS` GitHub secret.
+
+1. Create a hashed entry per user (the password is never stored in plain text):
+   `python voice-assistant/auth.py hash someone@company.com` → prints `email:pbkdf2_sha256$...`
+2. Put the entries, comma-separated, in the GitHub secret **`YODHA_USERS`**.
+3. Generate a token-signing key with `python voice-assistant/auth.py secret` and store it as **`YODHA_AUTH_SECRET`**.
+4. Merge to `main`. The deploy stops before touching the live app if any of `GEMINI_API_KEY`, `YODHA_USERS` or `YODHA_AUTH_SECRET` is missing.
+
+Remove a user by deleting their entry and redeploying. Rotating `YODHA_AUTH_SECRET` signs everyone out. Optional settings: `YODHA_RATE_LIMIT_PER_MIN` (default 120), `YODHA_TOKEN_TTL` (seconds, default 12 h), `ALLOWED_ORIGINS` (only if another site must call the API), `ENABLE_DEBUG=1`.
+
+Run the security tests: `pip install -r voice-assistant/requirements.txt pytest httpx && pytest voice-assistant/tests`
 
 ---
 
@@ -138,8 +159,8 @@ This is the path to replacing the hosted LLM with our own model running offline 
 | Priority | Initiative | Outcome |
 |---|---|---|
 | 1 | Own Telugu LLM (fine-tuned 3B → 4-bit / ternary) | Remove dependency on third-party LLM APIs |
-| 2 | Token streaming with sentence-level TTS | Lower end-to-end response latency |
-| 3 | Authentication and rate limiting on the public API | Production hardening |
+| 2 | ~~Token streaming with sentence-level TTS~~ (done in v10.1) | Lower end-to-end response latency |
+| 3 | ~~Authentication and rate limiting on the public API~~ (done in v10.1) | Production hardening |
 | 4 | Knowledge base in infrastructure-as-code, with a retrieval eval set | Reproducible, measurable answer quality |
 | 5 | Offline deployment on Jetson Orin Nano | Assistant runs with no cloud connection |
 | 6 | Integration into the Paperclip / YODA platform | Yodha available across our products |
@@ -168,7 +189,7 @@ Large checkpoints are hosted on [Hugging Face](https://huggingface.co/RishikUtte
 - Gemini LLM with a three-model fallback chain and retry
 - Browser speech recognition as primary STT; gTTS with browser fallback
 - Retrieval over vehicle manuals (ChromaDB + multilingual-e5-small)
-- SSE streaming, barge-in, health and diagnostics endpoints
+- SSE streaming, tap-to-interrupt, health and diagnostics endpoints
 
 **v8: all-Gemini pipeline**
 - Gemini 2.0 Flash for speech-to-text, LLM and text-to-speech

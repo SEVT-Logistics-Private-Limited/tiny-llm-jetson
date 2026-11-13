@@ -29,7 +29,42 @@ jobs:
             --file voice-assistant/Dockerfile \
             .
 
-      # Update the Container App to use the new image and ensure API keys are set
+      # Fail fast (before touching the live app) if a required secret is missing.
+      - name: Check required secrets
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YODHA_USERS: ${{ secrets.YODHA_USERS }}
+          YODHA_AUTH_SECRET: ${{ secrets.YODHA_AUTH_SECRET }}
+        run: |
+          missing=0
+          for v in GEMINI_API_KEY YODHA_USERS YODHA_AUTH_SECRET; do
+            if [ -z "${!v}" ]; then echo "::error::GitHub secret $v is not set"; missing=1; fi
+          done
+          if [ ${#YODHA_AUTH_SECRET} -lt 32 ]; then echo "::error::YODHA_AUTH_SECRET must be at least 32 characters"; missing=1; fi
+          # Every YODHA_USERS entry must be email:hash. A bare email would deploy an app nobody can log in to.
+          entry='^[^:, ]+@[^:, ]+:pbkdf2_sha256\$[0-9]+\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$'
+          if [ -n "$YODHA_USERS" ] && printf '%s' "$YODHA_USERS" | tr ',' '\n' | grep -qvE "$entry"; then
+            echo "::error::YODHA_USERS has an entry that is not in the form email:pbkdf2_sha256\$... (create entries with voice-assistant/auth.py hash)"; missing=1
+          fi
+          exit $missing
+
+      # Store keys as Container Apps secrets (not plain env vars), then reference them.
+      # Values are passed via env (never inlined in the script), so '$' in hashes is safe.
+      - name: Set Container App secrets
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YODHA_USERS: ${{ secrets.YODHA_USERS }}
+          YODHA_AUTH_SECRET: ${{ secrets.YODHA_AUTH_SECRET }}
+        run: |
+          az containerapp secret set \
+            --name ${{ secrets.CONTAINER_APP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --secrets \
+              "gemini-api-key=$GEMINI_API_KEY" \
+              "yodha-users=$YODHA_USERS" \
+              "yodha-auth-secret=$YODHA_AUTH_SECRET" \
+            --output none
+
       - name: Deploy to Container App
         run: |
           az containerapp update \
@@ -38,4 +73,7 @@ jobs:
             --image ${{ secrets.ACR_NAME }}.azurecr.io/telugu-voice-ai:${{ github.sha }} \
             --min-replicas 1 \
             --set-env-vars \
-              GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+              GEMINI_API_KEY=secretref:gemini-api-key \
+              YODHA_USERS=secretref:yodha-users \
+              YODHA_AUTH_SECRET=secretref:yodha-auth-secret \
+            --output none

@@ -129,9 +129,10 @@ body{display:flex;align-items:center;justify-content:center;background:#0a0f0a}
 
 .msg{
   max-width:80%;padding:12px 16px;border-radius:18px;
-  font-size:14px;line-height:1.6;
+  font-size:14px;line-height:1.6;white-space:pre-line;
   animation:msgIn .2s ease-out;
 }
+.call-status-row.can-interrupt,.wave-bars.can-interrupt{cursor:pointer}
 @keyframes msgIn{
   from{opacity:0;transform:translateY(6px)}
   to{opacity:1;transform:translateY(0)}
@@ -310,13 +311,13 @@ body{display:flex;align-items:center;justify-content:center;background:#0a0f0a}
 
   <div class="conv-wrap" id="convWrap"></div>
 
-  <div class="call-status-row">
+  <div class="call-status-row" id="statusRow" onclick="interruptAI()" role="button" aria-label="Tap to interrupt Yodha">
     <div class="state-dot" id="stateDot"></div>
     <span class="state-label" id="stateLabel">Ready to talk</span>
   </div>
 
   <div class="waveform-area">
-    <div class="wave-bars" id="waveBars"></div>
+    <div class="wave-bars" id="waveBars" onclick="interruptAI()"></div>
     <div class="call-controls">
       <button class="ctrl" id="muteBtn" onclick="toggleMute()">
         <svg id="muteIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -353,26 +354,78 @@ body{display:flex;align-items:center;justify-content:center;background:#0a0f0a}
 </div>
 
 <script>
-const API = "https://telugu-voice-app.gentletree-f4002f64.southindia.azurecontainerapps.io";
-const VALID_EMAIL = "yodhakit@gmail.com";
-const VALID_PASS  = "Yodhakit";
+const API = "";  // same origin as the server that serves this page
 const N_BARS = 9;
 const HAS_STT = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
 // ── Auth ──
-function doLogin() {
+// The server checks the password and returns a signed, expiring token.
+// Every API call sends it; a 401 sends the user back to the login screen.
+const TOKEN_KEY = 'yodha_token', TOKEN_EXP_KEY = 'yodha_token_exp';
+
+function getToken() {
+  try {
+    const t = localStorage.getItem(TOKEN_KEY);
+    const exp = +localStorage.getItem(TOKEN_EXP_KEY);
+    if (t && exp * 1000 > Date.now()) return t;
+  } catch(e) {}
+  return null;
+}
+
+function clearToken() {
+  try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(TOKEN_EXP_KEY); localStorage.removeItem('yodha_auth'); } catch(e) {}
+}
+
+function logout(message) {
+  clearToken();
+  if (document.getElementById('call').classList.contains('active')) endCall();
+  document.getElementById('loginError').textContent = message || '';
+  showScreen('login');
+}
+
+async function apiFetch(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  const t = getToken();
+  if (t) headers['Authorization'] = `Bearer ${t}`;
+  const r = await fetch(`${API}${path}`, { ...opts, headers });
+  if (r.status === 401) {
+    logout('Your session has expired. Please sign in again.');
+    throw new Error('Not authenticated');
+  }
+  return r;
+}
+
+let loginPending = false;
+async function doLogin() {
+  if (loginPending) return;
   const email = document.getElementById('loginEmail').value.trim().toLowerCase();
   const pass  = document.getElementById('loginPassword').value;
   const err   = document.getElementById('loginError');
-  if (email === VALID_EMAIL && pass === VALID_PASS) {
-    try { localStorage.setItem('yodha_auth', '1'); } catch(e) {}
-    err.textContent = '';
-    unlockAudio();
-    showScreen('home');
-    warmup();
-  } else {
-    err.textContent = 'Incorrect email or password.';
-    document.getElementById('loginPassword').value = '';
+  const btn   = document.querySelector('.login-btn');
+  if (!email || !pass) { err.textContent = 'Enter your email and password.'; return; }
+  loginPending = true; btn.disabled = true; btn.textContent = 'Signing in…'; err.textContent = '';
+  unlockAudio();  // must run inside the user gesture (iOS)
+  try {
+    const r = await fetch(`${API}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass }), signal: AbortSignal.timeout(15000)
+    });
+    if (r.ok) {
+      const d = await r.json();
+      try { localStorage.setItem(TOKEN_KEY, d.token); localStorage.setItem(TOKEN_EXP_KEY, String(d.expires_at)); } catch(e) {}
+      document.getElementById('loginPassword').value = '';
+      showScreen('home');
+      warmup();
+    } else if (r.status === 429) {
+      err.textContent = 'Too many attempts. Please wait a minute.';
+    } else {
+      err.textContent = 'Incorrect email or password.';
+      document.getElementById('loginPassword').value = '';
+    }
+  } catch(e) {
+    err.textContent = 'Cannot reach the server. Check your connection.';
+  } finally {
+    loginPending = false; btn.disabled = false; btn.textContent = 'Sign In';
   }
 }
 document.addEventListener('keydown', e => {
@@ -381,8 +434,8 @@ document.addEventListener('keydown', e => {
 
 // ── Init ──
 (function init() {
-  let ok = false;
-  try { ok = localStorage.getItem('yodha_auth') === '1'; } catch(e) {}
+  const ok = !!getToken();
+  if (!ok) clearToken();
   showScreen(ok ? 'home' : 'login');
   if (ok) warmup();
   setGreeting();
@@ -403,9 +456,28 @@ function buildStars() {
     const b = document.createElement('button');
     b.className = 'star'; b.dataset.val = i;
     b.innerHTML = `<svg viewBox="0 0 24 24"><path class="sp" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
-    b.onclick = () => { document.querySelectorAll('.star').forEach(s => s.classList.toggle('filled', +s.dataset.val <= i)); };
+    b.setAttribute('aria-label', `${i} star${i > 1 ? 's' : ''}`);
+    b.onclick = () => {
+      document.querySelectorAll('.star').forEach(s => s.classList.toggle('filled', +s.dataset.val <= i));
+      sendFeedback(i);
+    };
     c.appendChild(b);
   }
+}
+
+function sendFeedback(rating) {
+  apiFetch('/feedback', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating, call_seconds: lastCall.seconds, turns: lastCall.turns }),
+    signal: AbortSignal.timeout(10000)
+  }).then(r => {
+    document.querySelector('.rating-q').textContent = r.ok ? 'Thanks for your feedback!' : 'How was your conversation?';
+  }).catch(() => {});
+}
+
+function resetRating() {
+  document.querySelectorAll('.star').forEach(s => s.classList.remove('filled'));
+  document.querySelector('.rating-q').textContent = 'How was your conversation?';
 }
 
 function buildWaveBars() {
@@ -442,6 +514,10 @@ let timerInterval = null, callSeconds = 0;
 let sharedAudio = new Audio();
 sharedAudio.playsInline = true;
 let isPlayingAI = false;
+let currentState = 'idle';
+let turnId = 0;               // bumped on interrupt/end; stale async playback checks it and bails
+let pendingPlayResolve = null; // resolves the in-flight playAudioB64 promise when interrupted
+let lastCall = { seconds: 0, turns: 0 };
 
 // ── Navigation ──
 function showScreen(id) {
@@ -452,7 +528,7 @@ function showScreen(id) {
 // ── Warmup ──
 async function warmup() {
   try {
-    const r = await fetch(`${API}/healthz`, { signal: AbortSignal.timeout(12000) });
+    const r = await apiFetch(`/healthz`, { signal: AbortSignal.timeout(12000) });
     if (r.ok) {
       document.getElementById('warmupDot').classList.add('ready');
       document.getElementById('warmupLabel').textContent = 'Ready';
@@ -466,7 +542,7 @@ async function testSound() {
   btn.classList.add('testing'); btn.textContent = 'Loading…';
   try {
     unlockAudio();
-    const r = await fetch(`${API}/speak`, { signal: AbortSignal.timeout(30000) });
+    const r = await apiFetch(`/speak`, { signal: AbortSignal.timeout(30000) });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
     await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg');
@@ -500,20 +576,26 @@ async function greetUser() {
 
   addMessage('ai', greeting);
   setState('speaking');
+  const myTurn = turnId;
   let greetingPlayed = false;
   try {
-    const r = await fetch(`${API}/tts`, {
+    const r = await apiFetch(`/tts`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({text: greeting}), signal: AbortSignal.timeout(30000)
     });
     if (r.ok) { const d = await r.json(); await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg'); greetingPlayed = true; }
   } catch(e) { console.warn('greeting tts error:', e); }
+  if (myTurn !== turnId) return;  // user interrupted; interruptAI already started listening
   if (!greetingPlayed && !userStopped) await speakWithBrowser(greeting);
+  if (myTurn !== turnId) return;
   if (!userStopped) startListening();
 }
 
 function endCall() {
+  lastCall = { seconds: callSeconds, turns: history.filter(m => m.role === 'user').length };
   userStopped = true;
+  turnId++;
+  if (pendingPlayResolve) { pendingPlayResolve(false); pendingPlayResolve = null; }
   clearInterval(timerInterval);
   sharedAudio.pause(); sharedAudio.currentTime = 0;
   isPlayingAI = false;
@@ -521,10 +603,10 @@ function endCall() {
   if (recognition) { try { recognition.abort(); } catch(e) {} recognition = null; }
   if (rec?.state === 'recording') rec.stop();
   cleanupMonitor();
-  stopBargein();
   cancelAnimationFrame(waveRAF);
   history = [];
   setState('idle');
+  resetRating();
   showScreen('postcall');
 }
 
@@ -537,7 +619,7 @@ function toggleMute() {
   document.getElementById('muteIcon').innerHTML = muted
     ? `<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23M12 19v4M8 23h8"/>`
     : `<path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>`;
-  if (muted) sharedAudio.pause();
+  if (muted) stopAI();  // also releases the turn that is waiting on the audio
 }
 
 function updateTimer() {
@@ -549,10 +631,14 @@ function updateTimer() {
 // ── UI state ──
 function setState(state) {
   const dot = document.getElementById('stateDot');
+  currentState = state;
   dot.className = 'state-dot' + (state !== 'idle' ? ' ' + state : '');
+  const canInterrupt = state === 'speaking';
+  document.getElementById('statusRow').classList.toggle('can-interrupt', canInterrupt);
+  document.getElementById('waveBars').classList.toggle('can-interrupt', canInterrupt);
   if (state !== 'listening') {
     document.getElementById('stateLabel').textContent =
-      {thinking:'Thinking…', speaking:'Speaking…', idle:'Ready to talk'}[state] || 'Ready to talk';
+      {thinking:'Thinking…', speaking:'Speaking… tap to interrupt', idle:'Ready to talk'}[state] || 'Ready to talk';
   } else {
     document.getElementById('stateLabel').textContent = 'Listening…';
   }
@@ -667,9 +753,10 @@ async function processText(text) {
   if (!text.trim() || userStopped) { if (!userStopped) startListening(); return; }
   addMessage('user', text);
   setState('thinking');
+  const myTurn = turnId;
 
   try {
-    const resp = await fetch(`${API}/converse_text_stream`, {
+    const resp = await apiFetch(`/converse_text_stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, history }),
@@ -679,6 +766,7 @@ async function processText(text) {
     await readSSE(resp, true);
   } catch(e) {
     console.error('processText error:', e);
+    if (myTurn !== turnId) return;
     addMessage('ai', '⚠ Connection error. Trying again…');
     setState('idle');
     if (!userStopped) setTimeout(() => startListening(), 2000);
@@ -691,7 +779,9 @@ async function startAudioRecording() {
   chunks = []; hasSpoken = false; endedByTimeout = false;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    rec = new MediaRecorder(stream);
+    const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+    const mt = preferred.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+    rec = mt ? new MediaRecorder(stream, { mimeType: mt }) : new MediaRecorder(stream);
     rec.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
     rec.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
@@ -733,23 +823,26 @@ async function startAudioRecording() {
 async function processAudio() {
   if (!chunks.length) { setState('idle'); if (!userStopped) startListening(); return; }
   setState('thinking');
-  const blob = new Blob(chunks, { type: 'audio/webm' });
+  const myTurn = turnId;
+  const mimeType = (rec && rec.mimeType) || 'audio/webm';  // Safari records audio/mp4
+  const blob = new Blob(chunks, { type: mimeType });
   const b64 = await new Promise(res => {
     const r = new FileReader();
     r.onloadend = () => res(r.result.split(',')[1]);
     r.readAsDataURL(blob);
   });
   try {
-    const resp = await fetch(`${API}/converse_stream`, {
+    const resp = await apiFetch(`/converse_stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audio_base64: b64, history }),
+      body: JSON.stringify({ audio_base64: b64, mime_type: mimeType.split(';')[0], history }),
       signal: AbortSignal.timeout(45000)
     });
     if (!resp.ok) throw new Error(`${resp.status}`);
     await readSSE(resp, false);
   } catch(e) {
     console.error('processAudio error:', e);
+    if (myTurn !== turnId) return;
     addMessage('ai', '⚠ Connection error. Trying again…');
     setState('idle');
     if (!userStopped) setTimeout(() => startListening(), 2000);
@@ -757,11 +850,13 @@ async function processAudio() {
 }
 
 // ── SSE reader (shared by both pipelines) ──
+let reqSeq = 0;  // only the newest request may update history
+
 async function readSSE(resp, textMode) {
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
-  const sseState = { lastResponse: '' };
+  const sseState = { turn: turnId, seq: ++reqSeq, bubble: null, chunked: false, player: Promise.resolve() };
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -777,53 +872,61 @@ async function readSSE(resp, textMode) {
   }
 }
 
-async function handleSSE(ev, textMode, sseState = {}) {
+// Speech queue: audio for each sentence is requested as soon as its text arrives (in
+// parallel), and the sentences are played one after another in order.
+function enqueueSpeech(sseState, text) {
+  if (muted || userStopped || sseState.turn !== turnId) return;
+  const audio = apiFetch(`/tts`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text}),
+    signal: AbortSignal.timeout(30000)
+  }).then(r => r.ok ? r.json() : null).catch(() => null);
+  sseState.player = sseState.player.then(async () => {
+    const live = () => !muted && !userStopped && sseState.turn === turnId;
+    const d = await audio;
+    if (!live()) return;
+    const played = d ? await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg') : false;
+    if (!played && live()) await speakWithBrowser(text);
+  });
+}
+
+async function handleSSE(ev, textMode, sseState) {
+  const live = sseState.turn === turnId;  // false once the user interrupted or ended the call
   switch (ev.type) {
     case 'transcript':
+      if (!live) break;
       if (!textMode) addMessage('user', ev.text);
       setState('thinking');
       break;
-    case 'response':
-      sseState.lastResponse = ev.text;
-      addMessage('ai', ev.text);
-      setState('speaking');
-      // Kick off TTS fetch immediately — runs in parallel while SSE stream finishes
-      if (!muted && !userStopped) {
-        sseState.ttsFetch = fetch(`${API}/tts`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({text: ev.text}),
-          signal: AbortSignal.timeout(30000)
-        });
+    case 'chunk':  // one sentence of the answer, sent while the rest is still being written
+      if (!live) break;
+      sseState.chunked = true;
+      if (sseState.bubble) {
+        sseState.bubble.textContent += ' ' + ev.text;
+        const wrap = document.getElementById('convWrap');
+        wrap.scrollTop = wrap.scrollHeight;
+      } else {
+        sseState.bubble = addMessage('ai', ev.text);
+        setState('speaking');
       }
+      enqueueSpeech(sseState, ev.text);
+      break;
+    case 'response':  // the full answer, with its line breaks
+      if (!live) break;
+      if (sseState.bubble) sseState.bubble.textContent = ev.text;
+      else { sseState.bubble = addMessage('ai', ev.text); setState('speaking'); }
+      if (!sseState.chunked) enqueueSpeech(sseState, ev.text);
       break;
     case 'done':
-      if (ev.history) history = ev.history;
-      if (sseState.lastResponse && !muted && !userStopped) {
-        try {
-          const r = await (sseState.ttsFetch || fetch(`${API}/tts`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({text: sseState.lastResponse}),
-            signal: AbortSignal.timeout(30000)
-          }));
-          if (r.ok) {
-            const d = await r.json();
-            const played = await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg');
-            if (!played) await speakWithBrowser(sseState.lastResponse);
-          } else {
-            await speakWithBrowser(sseState.lastResponse);
-          }
-        } catch(e) {
-          await speakWithBrowser(sseState.lastResponse);
-        }
-      }
-      sseState.ttsFetch = null;
+      if (ev.history && sseState.seq === reqSeq) history = ev.history;
+      await sseState.player;
+      if (sseState.turn !== turnId) break;  // interruptAI already switched to listening
       setState('idle');
       if (!userStopped) setTimeout(() => startListening(), 200);
       break;
     case 'error':
-      sseState.ttsFetch = null;
+      if (!live) break;
       addMessage('ai', `⚠ ${ev.msg || 'Something went wrong'}`);
       setState('idle');
       if (!userStopped) setTimeout(() => startListening(), 2000);
@@ -831,51 +934,22 @@ async function handleSSE(ev, textMode, sseState = {}) {
   }
 }
 
-// ── Barge-in ──
-let bargeinCtx = null, bargeinRAF = null;
-async function startBargein() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    bargeinCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const src = bargeinCtx.createMediaStreamSource(stream);
-    const an = bargeinCtx.createAnalyser();
-    an.fftSize = 256;
-    src.connect(an);
-    const fd = new Uint8Array(an.frequencyBinCount);
-    let consecutive = 0;
-    function check() {
-      an.getByteFrequencyData(fd);
-      const avg = fd.reduce((a,b)=>a+b,0)/fd.length;
-      consecutive = avg > 18 ? consecutive + 1 : 0;
-      if (consecutive >= 4) {
-        stopAI();
-        stream.getTracks().forEach(t=>t.stop());
-        try { bargeinCtx.close(); } catch(e) {}
-        bargeinCtx = null;
-        startListening();
-        return;
-      }
-      bargeinRAF = requestAnimationFrame(check);
-    }
-    check();
-    bargeinCtx._stream = stream;
-  } catch(e) {}
-}
-
-function stopBargein() {
-  cancelAnimationFrame(bargeinRAF);
-  if (bargeinCtx) {
-    if (bargeinCtx._stream) bargeinCtx._stream.getTracks().forEach(t=>t.stop());
-    try { bargeinCtx.close(); } catch(e) {}
-    bargeinCtx = null;
-  }
+// ── Interrupt (tap while Yodha is speaking) ──
+// Voice-activated barge-in was never wired up: with speakers on, the mic hears Yodha's own
+// voice and interrupts itself, and on iOS opening the mic moves audio to the earpiece.
+// Tapping is reliable on every device.
+function interruptAI() {
+  if (currentState !== 'speaking' || userStopped) return;
+  turnId++;
+  stopAI();
+  startListening();
 }
 
 function stopAI() {
   sharedAudio.pause();
   sharedAudio.currentTime = 0;
   isPlayingAI = false;
-  stopBargein();
+  if (pendingPlayResolve) { pendingPlayResolve(true); pendingPlayResolve = null; }
   try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(e) {}
 }
 
@@ -888,7 +962,9 @@ function cleanupMonitor() {
 
 // ── Audio playback ──
 function playAudioB64(b64, contentType = 'audio/mpeg') {
-  return new Promise(res => {
+  return new Promise(resolve => {
+    const res = v => { if (pendingPlayResolve === resolve) pendingPlayResolve = null; resolve(v); };
+    pendingPlayResolve = resolve;
     try {
       const bytes = atob(b64);
       const buf = new Uint8Array(bytes.length);
