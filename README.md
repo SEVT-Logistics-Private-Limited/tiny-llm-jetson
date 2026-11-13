@@ -55,7 +55,7 @@ flowchart LR
 
 - **Natural conversation:** continuous voice loop with memory of the last 8 turns; tap while Yodha is speaking to interrupt.
 - **Grounded answers:** responses use the relevant vehicle-manual passage when one matches.
-- **Low latency:** common questions answered in under 100 ms without the LLM. Answers stream over SSE, and audio generation starts as soon as text arrives.
+- **Low latency:** common questions answered in under 100 ms without the LLM. Answers stream over SSE sentence by sentence, and each sentence is spoken as soon as it is written.
 - **Telugu-first output:** natural Telugu, with technical English allowed where people actually use it.
 - **Resilient by design:** every stage has a fallback, so a single provider failure never takes the assistant down.
 
@@ -97,6 +97,8 @@ flowchart LR
 | POST | `/voice` | Single-turn audio in → audio out |
 | POST | `/feedback` | Post-call star rating, logged as a `FEEDBACK {json}` line |
 
+**Tuning the manual search.** The Telugu question is searched directly; only on a miss is it translated to English and searched again (one extra LLM call). Every search logs a `rag: {...}` line with both distances, and every turn logs a `timing: {...}` line. Settings: `RAG_DISTANCE_THRESHOLD` (default 0.35), `RAG_SKIP_TRANSLATE_ABOVE` (unset by default; set it from the logs to skip the translation for clearly unrelated questions), `TRANSLATE_MODELS`, `LLM_MODELS`.
+
 All endpoints except `/healthz`, `/`, `/assistant` and `/auth/login` require `Authorization: Bearer <token>`.
 
 > The knowledge base loads in the background from a ChromaDB volume at `/mnt/vehicledata`. If the volume is not mounted, the service keeps answering and `GET /` reports `"kb": "disabled"`. Check this after every deploy.
@@ -113,7 +115,7 @@ Users are invite-only: there is no sign-up. Accounts live in the `YODHA_USERS` G
 3. Generate a token-signing key with `python voice-assistant/auth.py secret` and store it as **`YODHA_AUTH_SECRET`**.
 4. Merge to `main`. The deploy stops before touching the live app if any of `GEMINI_API_KEY`, `YODHA_USERS` or `YODHA_AUTH_SECRET` is missing.
 
-Remove a user by deleting their entry and redeploying. Rotating `YODHA_AUTH_SECRET` signs everyone out. Optional settings: `YODHA_TOKEN_TTL` (seconds, default 12 h), `ALLOWED_ORIGINS` (only if another site must call the API), `ENABLE_DEBUG=1`.
+Remove a user by deleting their entry and redeploying. Rotating `YODHA_AUTH_SECRET` signs everyone out. Optional settings: `YODHA_RATE_LIMIT_PER_MIN` (default 120), `YODHA_TOKEN_TTL` (seconds, default 12 h), `ALLOWED_ORIGINS` (only if another site must call the API), `ENABLE_DEBUG=1`.
 
 Run the security tests: `pip install -r voice-assistant/requirements.txt pytest httpx && pytest voice-assistant/tests`
 
@@ -157,7 +159,7 @@ This is the path to replacing the hosted LLM with our own model running offline 
 | Priority | Initiative | Outcome |
 |---|---|---|
 | 1 | Own Telugu LLM (fine-tuned 3B → 4-bit / ternary) | Remove dependency on third-party LLM APIs |
-| 2 | Token streaming with sentence-level TTS | Lower end-to-end response latency |
+| 2 | ~~Token streaming with sentence-level TTS~~ (done in v10.1) | Lower end-to-end response latency |
 | 3 | ~~Authentication and rate limiting on the public API~~ (done in v10.1) | Production hardening |
 | 4 | Knowledge base in infrastructure-as-code, with a retrieval eval set | Reproducible, measurable answer quality |
 | 5 | Offline deployment on Jetson Orin Nano | Assistant runs with no cloud connection |

@@ -154,7 +154,8 @@ class AuthConfig:
 
 config = AuthConfig()
 login_limiter = RateLimiter(max_calls=5, window_s=60)    # per IP: brute-force protection
-api_limiter = RateLimiter(max_calls=30, window_s=60)     # per user: cost protection
+# Per user: cost protection. One voice turn = 1 conversation call + 1 /tts call per sentence.
+api_limiter = RateLimiter(max_calls=int(os.environ.get("YODHA_RATE_LIMIT_PER_MIN", "120")), window_s=60)
 
 
 def require_user(authorization: str = Header(default="")) -> str:

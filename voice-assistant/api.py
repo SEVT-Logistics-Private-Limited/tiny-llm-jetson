@@ -72,10 +72,10 @@ def _extract_text_from_response(resp):
     return None
 
 
-def _llm_call_with_fallback(contents, config, context_label="llm"):
+def _llm_call_with_fallback(contents, config, context_label="llm", models=None):
     """Call generate_content with model fallback + 1 retry on transient ServerErrors.
     Returns (text, model_used) or (None, None)."""
-    for model in LLM_MODELS:
+    for model in (models or LLM_MODELS):
         for attempt in range(2):
             try:
                 resp = gemini_client.models.generate_content(
@@ -103,31 +103,63 @@ def _llm_call_with_fallback(contents, config, context_label="llm"):
     return None, None
 
 
+# Translation is a small task: try the fastest model first.
+TRANSLATE_MODELS = [m.strip() for m in os.environ.get(
+    "TRANSLATE_MODELS", "gemini-3.5-flash-lite").split(",") if m.strip()] + LLM_MODELS
+
 def gemini_translate(text, source_lang, target_lang):
     prompt = f"Translate the following text from {source_lang} to {target_lang}. Return only the translated text, no explanations.\n\nText: {text}"
     txt, _ = _llm_call_with_fallback(
         contents=prompt,
         config=genai_types.GenerateContentConfig(max_output_tokens=500),
-        context_label="gemini_translate"
+        context_label="gemini_translate",
+        models=TRANSLATE_MODELS,
     )
     return txt.strip() if txt else text
 
-def retrieve_manual_context(question_te, distance_threshold=0.35):
+RAG_DISTANCE_THRESHOLD = float(os.environ.get("RAG_DISTANCE_THRESHOLD", "0.35"))
+# If the direct Telugu search is further than this, the question is treated as unrelated to
+# the manuals and the translation retry is skipped. Unset = always retry (same answers as
+# before). Pick a value from the "rag:" log lines once there is real traffic.
+_skip = os.environ.get("RAG_SKIP_TRANSLATE_ABOVE", "").strip()
+RAG_SKIP_TRANSLATE_ABOVE = float(_skip) if _skip else None
+
+def _search_manuals(query_text):
+    """Best match as (distance, passage, source), or None when the collection is empty."""
+    query_emb = _embed_model.encode(["query: " + query_text]).tolist()
+    results = _manuals_collection.query(query_embeddings=query_emb, n_results=1)
+    if not results["documents"][0]:
+        return None
+    return (results["distances"][0][0], results["documents"][0][0],
+            results["metadatas"][0][0]["source"])
+
+def retrieve_manual_context(question_te):
+    """Search with the Telugu question directly (the embedding model is multilingual, ~20 ms).
+    Only when that misses, translate to English and retry (an extra LLM call, ~1 s)."""
     if _manuals_collection is None:
         return None
     try:
-        question_en = gemini_translate(question_te, "Telugu", "English")
-        query_emb = _embed_model.encode(["query: " + question_en]).tolist()
-        results = _manuals_collection.query(query_embeddings=query_emb, n_results=1)
-        if not results["documents"][0]:
+        t0 = time.monotonic()
+        hit = _search_manuals(question_te)
+        if hit is None:
             return None
-        doc = results["documents"][0][0]
-        dist = results["distances"][0][0]
-        source = results["metadatas"][0][0]["source"]
-        if dist > distance_threshold:
-            return None
-        return {"passage": doc[:1200], "source": source}
-    except Exception:
+        direct_dist, path, translated_dist = hit[0], "direct", None
+        if direct_dist > RAG_DISTANCE_THRESHOLD:
+            if RAG_SKIP_TRANSLATE_ABOVE is not None and direct_dist > RAG_SKIP_TRANSLATE_ABOVE:
+                path = "skipped"
+            else:
+                question_en = gemini_translate(question_te, "Telugu", "English")
+                path = "translated"
+                if question_en != question_te:
+                    hit = _search_manuals(question_en) or hit
+                    translated_dist = hit[0]
+        matched = hit[0] <= RAG_DISTANCE_THRESHOLD
+        print("rag: " + json.dumps({"path": path, "direct": round(direct_dist, 3),
+              "translated": None if translated_dist is None else round(translated_dist, 3),
+              "hit": matched, "ms": int((time.monotonic() - t0) * 1000)}), flush=True)
+        return {"passage": hit[1][:1200], "source": hit[2]} if matched else None
+    except Exception as e:
+        print(f"rag: error ({type(e).__name__}): {e}")
         return None
 
 def get_context():
@@ -234,7 +266,9 @@ def build_system(ctx, manual_context=None):
         )
     return base
 
-def telugu_llm(messages):
+LLM_FALLBACK_TEXT = "క్షమించాలి, మళ్ళీ అడగగలరా?"
+
+def _build_contents(messages):
     system_msg = messages[0]["content"]
     # Prepend system instruction as user+model turn — more universally supported
     # than system_instruction in GenerateContentConfig (some models return ClientError
@@ -249,8 +283,11 @@ def telugu_llm(messages):
             role=role,
             parts=[genai_types.Part(text=m["content"])]
         ))
+    return contents
+
+def telugu_llm(messages):
     raw, model_used = _llm_call_with_fallback(
-        contents=contents,
+        contents=_build_contents(messages),
         config=genai_types.GenerateContentConfig(max_output_tokens=500),
         context_label="telugu_llm"
     )
@@ -258,7 +295,48 @@ def telugu_llm(messages):
         print(f"telugu_llm: response from model={model_used}")
         return clean_for_display(raw)
     print("telugu_llm: all models returned None — returning fallback")
-    return "క్షమించాలి, మళ్ళీ అడగగలరా?"
+    return LLM_FALLBACK_TEXT
+
+def telugu_llm_stream(messages):
+    """Yield raw text pieces as the model produces them. Falls back to the next model only
+    while nothing has been sent yet; a failure mid-answer keeps what was already produced.
+    Yields nothing if every model fails."""
+    contents = _build_contents(messages)
+    config = genai_types.GenerateContentConfig(max_output_tokens=500)
+    for model in LLM_MODELS:
+        produced = False
+        try:
+            for chunk in gemini_client.models.generate_content_stream(
+                    model=model, contents=contents, config=config):
+                piece = _extract_text_from_response(chunk)
+                if piece:
+                    produced = True
+                    yield piece
+        except Exception as e:
+            print(f"telugu_llm_stream: error (model={model}, mid_answer={produced}, {type(e).__name__}): {e}")
+        if produced:
+            print(f"telugu_llm_stream: response from model={model}")
+            return
+    print("telugu_llm_stream: all models returned nothing")
+
+# A piece is sent for speech once it ends a sentence (or line) and is long enough to sound
+# natural. Requiring whitespace after the full stop keeps decimals like 3.5 together.
+_SENTENCE_END = re.compile(r'[.!?।]["\')\]]*\s+|\n+')
+MIN_SPEECH_CHARS = 40
+
+def split_sentences(pieces, min_chars=MIN_SPEECH_CHARS):
+    """Group streamed text pieces into speakable segments."""
+    buf = ""
+    for piece in pieces:
+        buf += piece
+        while True:
+            cut = next((m.end() for m in _SENTENCE_END.finditer(buf) if m.end() >= min_chars), None)
+            if cut is None:
+                break
+            yield buf[:cut]
+            buf = buf[cut:]
+    if buf.strip():
+        yield buf
 
 MAX_TTS_CHARS = 4_000
 GTTS_TIMEOUT = (5, 10)   # (connect, read) seconds per HTTP request to Google
@@ -549,99 +627,75 @@ def converse(req: ConvReq, user: str = Depends(require_user)):
         print(f"ERROR in /converse: {traceback.format_exc()}")
         raise HTTPException(500, "Internal server error")
 
-@app.post("/converse_stream")
-def converse_stream(req: ConvReq, user: str = Depends(require_user)):
-    """SSE streaming endpoint: emits transcript → response text → audio in order."""
-    def _sse(obj):
-        return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+def _sse(obj):
+    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
-    def generate():
-        try:
-            ctx = get_context()
-            user_text = gemini_stt(base64.b64decode(req.audio_base64), req.mime_type)
-            if not user_text.strip():
-                yield _sse({"type": "error", "msg": "Empty transcript"})
-                return
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
 
-            yield _sse({"type": "transcript", "text": user_text})
+def _conversation_events(get_user_text, history, label):
+    """Shared SSE pipeline: transcript → chunk (one per sentence, as generated) → response
+    (full text) → done. The client starts speech on the first chunk instead of waiting for
+    the whole answer."""
+    try:
+        t0 = time.monotonic()
+        ctx = get_context()
+        user_text = (get_user_text() or "").strip()
+        if not user_text:
+            yield _sse({"type": "error", "msg": "Empty transcript"})
+            return
+        yield _sse({"type": "transcript", "text": user_text})
 
-            instant = check_instant(user_text, ctx)
+        first_ms, raw = None, ""
+        instant = check_instant(user_text, ctx)
+        if instant:
             response_text = instant
-            if not instant:
+            yield _sse({"type": "chunk", "text": instant})
+        else:
+            try:
                 manual_ctx = retrieve_manual_context(user_text)
                 msgs = [{"role": "system", "content": build_system(ctx, manual_ctx)}]
-                for m in (req.history or [])[-HISTORY_TURNS:]:
+                for m in (history or [])[-HISTORY_TURNS:]:
                     msgs.append({"role": m.role, "content": m.content})
                 msgs.append({"role": "user", "content": user_text})
-                try:
-                    response_text = telugu_llm(msgs)
-                except Exception as llm_err:
-                    print(f"LLM error in /converse_stream ({type(llm_err).__name__}): {traceback.format_exc()}")
-                    response_text = "క్షమించాలి, నాకు ఇప్పుడు జవాబు ఇవ్వడం కష్టంగా ఉంది. మళ్ళీ అడగగలరా?"
+                for segment in split_sentences(telugu_llm_stream(msgs)):
+                    raw += segment
+                    shown = clean_for_display(segment)
+                    if shown:
+                        if first_ms is None:
+                            first_ms = int((time.monotonic() - t0) * 1000)
+                        yield _sse({"type": "chunk", "text": shown})
+            except Exception:
+                print(f"LLM error in {label}: {traceback.format_exc()}")
+            response_text = clean_for_display(raw)
+            if not response_text:
+                response_text = LLM_FALLBACK_TEXT
+                yield _sse({"type": "chunk", "text": response_text})
 
-            yield _sse({"type": "response", "text": response_text})
+        yield _sse({"type": "response", "text": response_text})
+        hist = [{"role": m.role, "content": m.content} for m in (history or [])]
+        hist.append({"role": "user", "content": user_text})
+        hist.append({"role": "assistant", "content": response_text})
+        yield _sse({"type": "done", "history": hist[-HISTORY_TURNS:]})
+        print("timing: " + json.dumps({"endpoint": label, "instant": bool(instant), "first_chunk_ms": first_ms,
+              "total_ms": int((time.monotonic() - t0) * 1000)}), flush=True)
+    except Exception as e:
+        print(f"ERROR in {label} ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
+        yield _sse({"type": "error", "msg": "Request failed. Please try again."})
 
-            # Convert Pydantic Msg objects to plain dicts so json.dumps can serialize them
-            hist = [{"role": m.role, "content": m.content} for m in (req.history or [])]
-            hist.append({"role": "user", "content": user_text})
-            hist.append({"role": "assistant", "content": response_text})
-            yield _sse({"type": "done", "history": hist[-HISTORY_TURNS:]})
-        except Exception as e:
-            print(f"ERROR in /converse_stream ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
-            yield _sse({"type": "error", "msg": "Request failed. Please try again."})
-
+@app.post("/converse_stream")
+def converse_stream(req: ConvReq, user: str = Depends(require_user)):
+    """SSE streaming endpoint: audio in → transcript → answer sentence by sentence."""
     return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
-    )
+        _conversation_events(lambda: gemini_stt(base64.b64decode(req.audio_base64), req.mime_type),
+                             req.history, "/converse_stream"),
+        media_type="text/event-stream", headers=_SSE_HEADERS)
 
 @app.post("/converse_text_stream")
 def converse_text_stream(req: TextConvReq, user: str = Depends(require_user)):
     """SSE streaming for pre-transcribed text — skips STT for lower latency."""
-    def _sse(obj):
-        return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
-
-    def generate():
-        try:
-            ctx = get_context()
-            user_text = req.text.strip()
-            if not user_text:
-                yield _sse({"type": "error", "msg": "Empty text"})
-                return
-
-            yield _sse({"type": "transcript", "text": user_text})
-
-            instant = check_instant(user_text, ctx)
-            response_text = instant
-            if not instant:
-                manual_ctx = retrieve_manual_context(user_text)
-                msgs = [{"role": "system", "content": build_system(ctx, manual_ctx)}]
-                for m in (req.history or [])[-HISTORY_TURNS:]:
-                    msgs.append({"role": m.role, "content": m.content})
-                msgs.append({"role": "user", "content": user_text})
-                try:
-                    response_text = telugu_llm(msgs)
-                except Exception as llm_err:
-                    print(f"LLM error in /converse_text_stream ({type(llm_err).__name__}): {traceback.format_exc()}")
-                    response_text = "క్షమించాలి, నాకు ఇప్పుడు జవాబు ఇవ్వడం కష్టంగా ఉంది. మళ్ళీ అడగగలరా?"
-
-            yield _sse({"type": "response", "text": response_text})
-
-            # Convert Pydantic Msg objects to plain dicts so json.dumps can serialize them
-            hist = [{"role": m.role, "content": m.content} for m in (req.history or [])]
-            hist.append({"role": "user", "content": user_text})
-            hist.append({"role": "assistant", "content": response_text})
-            yield _sse({"type": "done", "history": hist[-HISTORY_TURNS:]})
-        except Exception as e:
-            print(f"ERROR in /converse_text_stream ({type(e).__name__}: {e}):\n{traceback.format_exc()}")
-            yield _sse({"type": "error", "msg": "Request failed. Please try again."})
-
     return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
-    )
+        _conversation_events(lambda: req.text, req.history, "/converse_text_stream"),
+        media_type="text/event-stream", headers=_SSE_HEADERS)
 
 @app.post("/feedback")
 def feedback(req: FeedbackReq, user: str = Depends(require_user)):

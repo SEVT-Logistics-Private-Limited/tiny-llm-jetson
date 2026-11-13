@@ -34,6 +34,7 @@ def _reset(monkeypatch):
     auth.login_limiter._hits.clear()
     auth.api_limiter._hits.clear()
     monkeypatch.setattr(api, "telugu_llm", lambda msgs: "సరే, ఇదిగో జవాబు.")
+    monkeypatch.setattr(api, "telugu_llm_stream", lambda msgs: iter(["సరే, ఇదిగో జవాబు."]))
     monkeypatch.setattr(api, "do_tts", lambda text: (b"mp3", "audio/mpeg"))
     monkeypatch.setattr(api, "retrieve_manual_context", lambda q: None)
     monkeypatch.setattr(api, "gemini_stt", lambda b, mime="audio/webm": "హలో")
@@ -120,8 +121,9 @@ def test_debug_disabled_by_default_even_when_logged_in():
 
 def test_api_rate_limited_per_user():
     h = bearer()
-    codes = [client.post("/tts", json={"text": "హలో"}, headers=h).status_code for _ in range(31)]
-    assert codes[:30] == [200] * 30 and codes[30] == 429
+    n = auth.api_limiter.max_calls
+    codes = [client.post("/tts", json={"text": "హలో"}, headers=h).status_code for _ in range(n + 1)]
+    assert codes[:n] == [200] * n and codes[n] == 429
 
 
 # ── Input validation ─────────────────────────────────────────────────────────

@@ -619,7 +619,7 @@ function toggleMute() {
   document.getElementById('muteIcon').innerHTML = muted
     ? `<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23M12 19v4M8 23h8"/>`
     : `<path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>`;
-  if (muted) sharedAudio.pause();
+  if (muted) stopAI();  // also releases the turn that is waiting on the audio
 }
 
 function updateTimer() {
@@ -753,6 +753,7 @@ async function processText(text) {
   if (!text.trim() || userStopped) { if (!userStopped) startListening(); return; }
   addMessage('user', text);
   setState('thinking');
+  const myTurn = turnId;
 
   try {
     const resp = await apiFetch(`/converse_text_stream`, {
@@ -765,6 +766,7 @@ async function processText(text) {
     await readSSE(resp, true);
   } catch(e) {
     console.error('processText error:', e);
+    if (myTurn !== turnId) return;
     addMessage('ai', '⚠ Connection error. Trying again…');
     setState('idle');
     if (!userStopped) setTimeout(() => startListening(), 2000);
@@ -821,6 +823,7 @@ async function startAudioRecording() {
 async function processAudio() {
   if (!chunks.length) { setState('idle'); if (!userStopped) startListening(); return; }
   setState('thinking');
+  const myTurn = turnId;
   const mimeType = (rec && rec.mimeType) || 'audio/webm';  // Safari records audio/mp4
   const blob = new Blob(chunks, { type: mimeType });
   const b64 = await new Promise(res => {
@@ -839,6 +842,7 @@ async function processAudio() {
     await readSSE(resp, false);
   } catch(e) {
     console.error('processAudio error:', e);
+    if (myTurn !== turnId) return;
     addMessage('ai', '⚠ Connection error. Trying again…');
     setState('idle');
     if (!userStopped) setTimeout(() => startListening(), 2000);
@@ -846,11 +850,13 @@ async function processAudio() {
 }
 
 // ── SSE reader (shared by both pipelines) ──
+let reqSeq = 0;  // only the newest request may update history
+
 async function readSSE(resp, textMode) {
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
-  const sseState = { lastResponse: '' };
+  const sseState = { turn: turnId, seq: ++reqSeq, bubble: null, chunked: false, player: Promise.resolve() };
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -866,58 +872,61 @@ async function readSSE(resp, textMode) {
   }
 }
 
-async function handleSSE(ev, textMode, sseState = {}) {
+// Speech queue: audio for each sentence is requested as soon as its text arrives (in
+// parallel), and the sentences are played one after another in order.
+function enqueueSpeech(sseState, text) {
+  if (muted || userStopped || sseState.turn !== turnId) return;
+  const audio = apiFetch(`/tts`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text}),
+    signal: AbortSignal.timeout(30000)
+  }).then(r => r.ok ? r.json() : null).catch(() => null);
+  sseState.player = sseState.player.then(async () => {
+    const live = () => !muted && !userStopped && sseState.turn === turnId;
+    const d = await audio;
+    if (!live()) return;
+    const played = d ? await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg') : false;
+    if (!played && live()) await speakWithBrowser(text);
+  });
+}
+
+async function handleSSE(ev, textMode, sseState) {
+  const live = sseState.turn === turnId;  // false once the user interrupted or ended the call
   switch (ev.type) {
     case 'transcript':
+      if (!live) break;
       if (!textMode) addMessage('user', ev.text);
       setState('thinking');
       break;
-    case 'response':
-      sseState.lastResponse = ev.text;
-      addMessage('ai', ev.text);
-      setState('speaking');
-      // Kick off TTS fetch immediately — runs in parallel while SSE stream finishes
-      if (!muted && !userStopped) {
-        sseState.ttsFetch = apiFetch(`/tts`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({text: ev.text}),
-          signal: AbortSignal.timeout(30000)
-        });
+    case 'chunk':  // one sentence of the answer, sent while the rest is still being written
+      if (!live) break;
+      sseState.chunked = true;
+      if (sseState.bubble) {
+        sseState.bubble.textContent += ' ' + ev.text;
+        const wrap = document.getElementById('convWrap');
+        wrap.scrollTop = wrap.scrollHeight;
+      } else {
+        sseState.bubble = addMessage('ai', ev.text);
+        setState('speaking');
       }
+      enqueueSpeech(sseState, ev.text);
       break;
-    case 'done': {
-      if (ev.history) history = ev.history;
-      const myTurn = turnId;
-      if (sseState.lastResponse && !muted && !userStopped) {
-        try {
-          const r = await (sseState.ttsFetch || apiFetch(`/tts`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({text: sseState.lastResponse}),
-            signal: AbortSignal.timeout(30000)
-          }));
-          if (myTurn !== turnId) break;  // interrupted while audio was loading
-          if (r.ok) {
-            const d = await r.json();
-            if (myTurn !== turnId) break;
-            const played = await playAudioB64(d.audio_base64, d.content_type || 'audio/mpeg');
-            if (!played && myTurn === turnId) await speakWithBrowser(sseState.lastResponse);
-          } else {
-            await speakWithBrowser(sseState.lastResponse);
-          }
-        } catch(e) {
-          if (myTurn === turnId) await speakWithBrowser(sseState.lastResponse);
-        }
-      }
-      sseState.ttsFetch = null;
-      if (myTurn !== turnId) break;  // interruptAI already switched to listening
+    case 'response':  // the full answer, with its line breaks
+      if (!live) break;
+      if (sseState.bubble) sseState.bubble.textContent = ev.text;
+      else { sseState.bubble = addMessage('ai', ev.text); setState('speaking'); }
+      if (!sseState.chunked) enqueueSpeech(sseState, ev.text);
+      break;
+    case 'done':
+      if (ev.history && sseState.seq === reqSeq) history = ev.history;
+      await sseState.player;
+      if (sseState.turn !== turnId) break;  // interruptAI already switched to listening
       setState('idle');
       if (!userStopped) setTimeout(() => startListening(), 200);
       break;
-    }
     case 'error':
-      sseState.ttsFetch = null;
+      if (!live) break;
       addMessage('ai', `⚠ ${ev.msg || 'Something went wrong'}`);
       setState('idle');
       if (!userStopped) setTimeout(() => startListening(), 2000);
