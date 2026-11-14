@@ -71,11 +71,11 @@ flowchart LR
 | Component | Implementation |
 |---|---|
 | Hosting | Azure Container Apps, South India region, always-on (min 1 replica), managed TLS |
-| Image | [`voice-assistant/Dockerfile`](voice-assistant/Dockerfile): Python 3.11 slim, pinned dependencies, embedding model baked in for offline RAG |
+| Image | [`voice-assistant/Dockerfile`](voice-assistant/Dockerfile): Python 3.11 slim, pinned dependencies, embedding model baked in for offline RAG, runs as an unprivileged user |
 | Registry | Azure Container Registry, tagged by commit SHA and `latest` |
-| CI/CD | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): build on ACR, roll out to Container Apps on every push to `main` |
+| CI/CD | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): tests must pass ([`ci.yml`](.github/workflows/ci.yml), also run on every pull request), then build on ACR, roll out to Container Apps on every push to `main`, and verify the new revision is live |
 | Secrets | GitHub Actions secrets stored as Container Apps secrets (`secretref:`), never plain env vars |
-| Access | Server-side login, signed expiring tokens on every API call, per-IP and per-user rate limits |
+| Access | Server-side login, signed expiring tokens on every API call, per-IP and per-user rate limits; browser security headers (CSP, HSTS, no framing) on every response |
 | Health | `GET /healthz` liveness probe; `GET /` reports version and knowledge-base status |
 
 <details>
@@ -101,7 +101,7 @@ flowchart LR
 
 All endpoints except `/healthz`, `/`, `/assistant` and `/auth/login` require `Authorization: Bearer <token>`.
 
-> The knowledge base loads in the background from a ChromaDB volume at `/mnt/vehicledata`. If the volume is not mounted, the service keeps answering and `GET /` reports `"kb": "disabled"`. Check this after every deploy.
+> The knowledge base loads in the background from a ChromaDB volume at `/mnt/vehicledata`. If the volume is not mounted or not writable by the service user (uid 10001), the service keeps answering and `GET /` reports `"kb": "disabled"`. The deploy workflow checks this and raises a warning.
 
 </details>
 
@@ -115,7 +115,7 @@ Users are invite-only: there is no sign-up. Accounts live in the `YODHA_USERS` G
 3. Generate a token-signing key with `python voice-assistant/auth.py secret` and store it as **`YODHA_AUTH_SECRET`**.
 4. Merge to `main`. The deploy stops before touching the live app if any of `GEMINI_API_KEY`, `YODHA_USERS` or `YODHA_AUTH_SECRET` is missing.
 
-Remove a user by deleting their entry and redeploying. Rotating `YODHA_AUTH_SECRET` signs everyone out. Optional settings: `YODHA_RATE_LIMIT_PER_MIN` (default 120), `YODHA_TOKEN_TTL` (seconds, default 12 h), `ALLOWED_ORIGINS` (only if another site must call the API), `ENABLE_DEBUG=1`.
+Remove a user by deleting their entry and redeploying; tokens they already hold stop working as soon as the new revision is live. Rotating `YODHA_AUTH_SECRET` signs everyone out. Optional settings: `YODHA_RATE_LIMIT_PER_MIN` (default 120), `YODHA_TOKEN_TTL` (seconds, default 12 h), `LLM_TIMEOUT_S` (per Gemini call, default 30), `ALLOWED_ORIGINS` (only if another site must call the API), `ENABLE_DEBUG=1`.
 
 Run the security tests: `pip install -r voice-assistant/requirements.txt pytest httpx && pytest voice-assistant/tests`
 

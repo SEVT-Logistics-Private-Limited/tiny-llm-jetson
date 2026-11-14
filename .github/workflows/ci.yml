@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  pull_request:
+  workflow_call:   # reused by the deploy workflow, so nothing ships without passing
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # same as voice-assistant/Dockerfile
+          cache: pip
+          cache-dependency-path: voice-assistant/requirements.txt
+
+      # Same install as the Dockerfile (CPU-only PyTorch), so tests run against the shipped versions.
+      - name: Install dependencies
+        run: |
+          pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r voice-assistant/requirements.txt pytest httpx
+
+      - name: Run tests
+        run: pytest voice-assistant/tests -q
