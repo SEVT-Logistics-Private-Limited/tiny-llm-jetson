@@ -159,11 +159,16 @@ This is the path to replacing the hosted LLM with our own model running offline 
 | Priority | Initiative | Outcome |
 |---|---|---|
 | 1 | Own Telugu LLM (fine-tuned 3B → 4-bit / ternary) | Remove dependency on third-party LLM APIs |
-| 2 | ~~Token streaming with sentence-level TTS~~ (done in v10.1) | Lower end-to-end response latency |
-| 3 | ~~Authentication and rate limiting on the public API~~ (done in v10.1) | Production hardening |
-| 4 | Knowledge base in infrastructure-as-code, with a retrieval eval set | Reproducible, measurable answer quality |
-| 5 | Offline deployment on Jetson Orin Nano | Assistant runs with no cloud connection |
-| 6 | Integration into the Paperclip / YODA platform | Yodha available across our products |
+| 2 | Knowledge base in infrastructure-as-code, with a retrieval eval set | Reproducible, measurable answer quality |
+| 3 | Offline deployment on Jetson Orin Nano | Assistant runs with no cloud connection |
+| 4 | Integration into the Paperclip / YODA platform | Yodha available across our products |
+
+### Shipped in v10.1
+
+| Initiative | Outcome |
+|---|---|
+| Token streaming with sentence-level TTS | Lower end-to-end response latency |
+| Authentication and rate limiting on the public API | Production hardening |
 
 ---
 
