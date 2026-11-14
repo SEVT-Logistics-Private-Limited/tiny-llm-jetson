@@ -71,7 +71,7 @@ flowchart LR
 | Component | Implementation |
 |---|---|
 | Hosting | Azure Container Apps, South India region, always-on (min 1 replica), managed TLS |
-| Image | [`voice-assistant/Dockerfile`](voice-assistant/Dockerfile): Python 3.11 slim, pinned dependencies, embedding model baked in for offline RAG, runs as an unprivileged user |
+| Image | [`voice-assistant/Dockerfile`](voice-assistant/Dockerfile): Python 3.11 slim, pinned dependencies, embedding model baked in for offline RAG |
 | Registry | Azure Container Registry, tagged by commit SHA and `latest` |
 | CI/CD | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): tests must pass ([`ci.yml`](.github/workflows/ci.yml), also run on every pull request), then build on ACR, roll out to Container Apps on every push to `main`, and verify the new revision is live |
 | Secrets | GitHub Actions secrets stored as Container Apps secrets (`secretref:`), never plain env vars |
@@ -101,7 +101,7 @@ flowchart LR
 
 All endpoints except `/healthz`, `/`, `/assistant` and `/auth/login` require `Authorization: Bearer <token>`.
 
-> The knowledge base loads in the background from a ChromaDB volume at `/mnt/vehicledata`. If the volume is not mounted or not writable by the service user (uid 10001), the service keeps answering and `GET /` reports `"kb": "disabled"`. The deploy workflow checks this and raises a warning.
+> The knowledge base loads in the background from a ChromaDB volume at `/mnt/vehicledata`. If the volume is not mounted, the service keeps answering and `GET /` reports `"kb": "disabled"`. The deploy workflow checks this and raises a warning.
 
 </details>
 
