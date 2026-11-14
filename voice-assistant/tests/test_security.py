@@ -185,3 +185,44 @@ def test_rate_limiter_drops_stale_keys():
     _t.sleep(0.05)
     lim.allow("fresh-1"); lim.allow("fresh-2")
     assert set(lim._hits) == {"fresh-1", "fresh-2"}
+
+
+# ── Revocation, security headers, upstream timeout ───────────────────────────
+def test_removed_user_token_stops_working(monkeypatch):
+    h = bearer()
+    assert client.post("/tts", json={"text": "హలో"}, headers=h).status_code == 200
+    monkeypatch.setenv("YODHA_USERS", f"other@example.com:{auth.hash_password('another password', iterations=1_000)}")
+    monkeypatch.setattr(auth, "config", auth.AuthConfig())
+    assert client.post("/tts", json={"text": "హలో"}, headers=h).status_code == 401
+
+
+@pytest.mark.parametrize("method,path,status", [
+    ("get", "/healthz", 200), ("get", "/", 200), ("post", "/tts", 401), ("get", "/nope", 404)])
+def test_security_headers_on_every_response(method, path, status):
+    r = getattr(client, method)(path)
+    assert r.status_code == status
+    for name, value in auth.SECURITY_HEADERS.items():
+        assert r.headers.get(name) == value, (path, name)
+
+
+def test_security_headers_on_rejected_and_streamed_responses():
+    too_big = client.post("/tts", content=b"x" * (api.MAX_BODY_BYTES + 1), headers={"Content-Type": "application/json"})
+    assert too_big.status_code == 413 and too_big.headers["X-Content-Type-Options"] == "nosniff"
+    stream = client.post("/converse_text_stream", json={"text": "ఏమిటి విశేషాలు", "history": []}, headers=bearer())
+    assert stream.status_code == 200 and '"done"' in stream.text
+    assert stream.headers["Content-Security-Policy"] == auth.CONTENT_SECURITY_POLICY
+
+
+def test_csp_blocks_other_origins():
+    csp = dict(d.split(" ", 1) for d in auth.CONTENT_SECURITY_POLICY.split("; "))
+    assert csp["connect-src"] == "'self'" and csp["frame-ancestors"] == "'none'"
+    assert "*" not in auth.CONTENT_SECURITY_POLICY and "unsafe-eval" not in auth.CONTENT_SECURITY_POLICY
+
+
+def test_gemini_client_has_a_timeout():
+    opts = api.gemini_client._api_client._http_options
+    assert opts.timeout == int(api.LLM_TIMEOUT_S * 1000) and 0 < api.LLM_TIMEOUT_S <= 45
+
+
+def test_root_reports_app_version():
+    assert client.get("/").json()["version"] == api.app.version

@@ -1,0 +1,6 @@
+# The image is built from the repo root but only needs voice-assistant/ (see its Dockerfile).
+*
+!voice-assistant/requirements.txt
+!voice-assistant/api.py
+!voice-assistant/auth.py
+!voice-assistant/telugu_assistant.html

@@ -156,6 +156,55 @@ class BodySizeLimitMiddleware:
         await self.app(scope, limited_receive, send)
 
 
+# The page is one self-contained file (inline script, styles and handlers), so the policy has
+# to allow inline code. It still stops the page from loading scripts from, sending data to,
+# or being framed by any other site.
+CONTENT_SECURITY_POLICY = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "media-src 'self' blob: data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+SECURITY_HEADERS = {
+    "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "microphone=(self), camera=(), geolocation=()",
+}
+
+
+class SecurityHeadersMiddleware:
+    """Add browser security headers to every response. Plain ASGI (not BaseHTTPMiddleware)
+    so streamed responses pass through without being buffered."""
+
+    def __init__(self, app, headers: dict = None):
+        self.app = app
+        self._headers = [(k.lower().encode(), v.encode()) for k, v in (headers or SECURITY_HEADERS).items()]
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                present = {name.lower() for name, _ in message.get("headers", [])}
+                message["headers"] = list(message.get("headers", [])) + [
+                    h for h in self._headers if h[0] not in present]
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
 def client_ip(request: Request) -> str:
     # Azure Container Apps ingress appends the real client IP as the LAST X-Forwarded-For
     # entry; earlier entries are client-supplied and can be spoofed.
@@ -194,10 +243,11 @@ api_limiter = RateLimiter(max_calls=int(os.environ.get("YODHA_RATE_LIMIT_PER_MIN
 
 
 def require_user(authorization: str = Header(default="")) -> str:
-    """FastAPI dependency: validates the Bearer token and applies the per-user rate limit."""
+    """FastAPI dependency: validates the Bearer token and applies the per-user rate limit.
+    The account must still exist, so removing a user cuts off the tokens they already hold."""
     scheme, _, token = authorization.partition(" ")
     email = verify_token(token, config.secret) if scheme.lower() == "bearer" and config.secret else None
-    if not email:
+    if not email or email not in config.users:
         raise HTTPException(401, "Not authenticated", headers={"WWW-Authenticate": "Bearer"})
     if not api_limiter.allow(email):
         raise HTTPException(429, "Too many requests. Please wait a minute.")

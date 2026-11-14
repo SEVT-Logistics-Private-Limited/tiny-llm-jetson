@@ -4,8 +4,20 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+# One deploy at a time; a newer push waits for the running deploy instead of racing it.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
   build-and-deploy:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -77,3 +89,31 @@ jobs:
               YODHA_USERS=secretref:yodha-users \
               YODHA_AUTH_SECRET=secretref:yodha-auth-secret \
             --output none
+
+      # The update call returns before the new revision is serving. In single-revision mode
+      # the previous revision keeps taking traffic if the new one never becomes ready, so a
+      # failure here means "the release did not go live", not "the app is down".
+      - name: Verify the new revision is live
+        env:
+          APP: ${{ secrets.CONTAINER_APP_NAME }}
+          RG: ${{ secrets.RESOURCE_GROUP }}
+        run: |
+          for i in $(seq 1 30); do
+            read -r latest ready fqdn <<< "$(az containerapp show --name "$APP" --resource-group "$RG" \
+              --query "[properties.latestRevisionName, properties.latestReadyRevisionName, properties.configuration.ingress.fqdn]" \
+              --output tsv | tr '\n\t' '  ')"
+            if [ -n "$latest" ] && [ "$latest" = "$ready" ]; then break; fi
+            echo "Waiting for revision $latest to become ready (ready: $ready)"; sleep 10
+          done
+          if [ "$latest" != "$ready" ]; then
+            echo "::error::Revision $latest did not become ready within 5 minutes. The previous revision is still serving."; exit 1
+          fi
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors --max-time 10 "https://$fqdn/healthz"
+          echo
+          # The knowledge base loads in the background; without it answers lose the manuals.
+          for i in $(seq 1 12); do
+            status="$(curl --silent --max-time 10 "https://$fqdn/" || true)"
+            case "$status" in *'"kb":"loaded"'*) echo "Knowledge base loaded."; exit 0;; esac
+            sleep 10
+          done
+          echo "::warning::The app is live but the vehicle-manual knowledge base did not load: $status"

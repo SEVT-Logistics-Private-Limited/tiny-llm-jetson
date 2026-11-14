@@ -14,7 +14,13 @@ from auth import require_user
 
 GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 
-gemini_client = google_genai.Client(api_key=GEMINI_KEY)
+# Without a timeout a stalled Gemini call holds a worker thread long after the browser has
+# given up (45 s). For streamed answers this bounds each wait for data, not the whole answer.
+LLM_TIMEOUT_S = float(os.environ.get("LLM_TIMEOUT_S", "30"))
+
+gemini_client = google_genai.Client(
+    api_key=GEMINI_KEY,
+    http_options=genai_types.HttpOptions(timeout=int(LLM_TIMEOUT_S * 1000)))   # milliseconds
 
 # Ordered fallback chain — first model that returns non-null text wins.
 # gemini-2.0-flash and gemini-1.5-flash have been shut down by Google, so they are not used.
@@ -384,6 +390,7 @@ if _allowed_origins:
 # Largest legitimate request is ~8 MB of base64 audio plus history.
 MAX_BODY_BYTES = 10 * 1024 * 1024
 app.add_middleware(auth.BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
+app.add_middleware(auth.SecurityHeadersMiddleware)   # added last = outermost: covers 413s too
 
 DEBUG_ENABLED = os.environ.get("ENABLE_DEBUG") == "1"
 
@@ -448,7 +455,7 @@ def healthz():
 def health():
     ctx = get_context()
     kb = "loaded" if _manuals_collection is not None else "disabled"
-    return {"status": "running", "version": "10.0", "time": ctx['time'], "date": ctx['date'], "kb": kb}
+    return {"status": "running", "version": app.version, "time": ctx['time'], "date": ctx['date'], "kb": kb}
 
 @app.get("/assistant")
 def assistant():
