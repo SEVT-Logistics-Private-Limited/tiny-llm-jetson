@@ -29,7 +29,9 @@ COPY voice-assistant/api.py voice-assistant/auth.py ./
 # HTML served at /assistant — path hardcoded in api.py
 COPY voice-assistant/telugu_assistant.html /home/azureuser/telugu_assistant.html
 
-USER yodha
+# Runs as root for now: after the switch to the unprivileged user (uid 10001) the knowledge
+# base stopped loading from the /mnt/vehicledata share in production. Restore "USER yodha"
+# once the share is mounted writable for that uid.
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
