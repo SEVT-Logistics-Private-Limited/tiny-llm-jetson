@@ -4,5 +4,5 @@ google-genai==2.23.0
 sentence-transformers==3.3.1
 chromadb==0.6.3
 pytz==2024.2
-requests==2.32.3
+requests==2.34.2
 gTTS==2.5.3
