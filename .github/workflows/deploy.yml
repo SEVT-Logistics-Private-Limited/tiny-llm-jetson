@@ -3,6 +3,8 @@ name: Build & Deploy to Azure Container Apps
 on:
   push:
     branches: [main]
+  # Manual redeploy from the Actions tab, e.g. to apply a changed YODHA_USERS secret.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,6 +20,8 @@ jobs:
 
   build-and-deploy:
     needs: test
+    # A manual run can be started from any branch; only main may reach production.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -77,12 +81,16 @@ jobs:
               "yodha-auth-secret=$YODHA_AUTH_SECRET" \
             --output none
 
+      # A running revision keeps the secret values it started with, and Container Apps only
+      # starts a new revision when the template changes. The run-unique suffix forces a new
+      # revision on every run, so re-runs and manual runs of the same commit apply new secrets.
       - name: Deploy to Container App
         run: |
           az containerapp update \
             --name ${{ secrets.CONTAINER_APP_NAME }} \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
             --image ${{ secrets.ACR_NAME }}.azurecr.io/telugu-voice-ai:${{ github.sha }} \
+            --revision-suffix "gh${{ github.run_id }}-${{ github.run_attempt }}" \
             --min-replicas 1 \
             --set-env-vars \
               GEMINI_API_KEY=secretref:gemini-api-key \

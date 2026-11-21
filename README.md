@@ -73,7 +73,7 @@ flowchart LR
 | Hosting | Azure Container Apps, South India region, always-on (min 1 replica), managed TLS |
 | Image | [`voice-assistant/Dockerfile`](voice-assistant/Dockerfile): Python 3.11 slim, pinned dependencies, embedding model baked in for offline RAG |
 | Registry | Azure Container Registry, tagged by commit SHA and `latest` |
-| CI/CD | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): tests must pass ([`ci.yml`](.github/workflows/ci.yml), also run on every pull request), then build on ACR, roll out to Container Apps on every push to `main`, and verify the new revision is live |
+| CI/CD | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): tests must pass ([`ci.yml`](.github/workflows/ci.yml), also run on every pull request), then build on ACR, roll out a new Container Apps revision on every push to `main` (or on demand via **Run workflow**), and verify it is live |
 | Secrets | GitHub Actions secrets stored as Container Apps secrets (`secretref:`), never plain env vars |
 | Access | Server-side login, signed expiring tokens on every API call, per-IP and per-user rate limits; browser security headers (CSP, HSTS, no framing) on every response |
 | Health | `GET /healthz` liveness probe; `GET /` reports version and knowledge-base status |
@@ -113,7 +113,7 @@ Users are invite-only: there is no sign-up. Accounts live in the `YODHA_USERS` G
    `python voice-assistant/auth.py hash someone@company.com` → prints `email:pbkdf2_sha256$...`
 2. Put the entries, comma-separated, in the GitHub secret **`YODHA_USERS`**.
 3. Generate a token-signing key with `python voice-assistant/auth.py secret` and store it as **`YODHA_AUTH_SECRET`**.
-4. Merge to `main`. The deploy stops before touching the live app if any of `GEMINI_API_KEY`, `YODHA_USERS` or `YODHA_AUTH_SECRET` is missing.
+4. Deploy: merge to `main`, or, if only a secret changed, open **Actions → Build & Deploy to Azure Container Apps → Run workflow** on `main`. Secrets are read when a revision starts, and every deploy starts a new one. The deploy stops before touching the live app if any of `GEMINI_API_KEY`, `YODHA_USERS` or `YODHA_AUTH_SECRET` is missing.
 
 Remove a user by deleting their entry and redeploying; tokens they already hold stop working as soon as the new revision is live. Rotating `YODHA_AUTH_SECRET` signs everyone out. Optional settings: `YODHA_RATE_LIMIT_PER_MIN` (default 120), `YODHA_TOKEN_TTL` (seconds, default 12 h), `LLM_TIMEOUT_S` (per Gemini call, default 30), `ALLOWED_ORIGINS` (only if another site must call the API), `ENABLE_DEBUG=1`.
 
